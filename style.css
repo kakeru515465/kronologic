@@ -348,3 +348,28 @@ select option {
   padding: 0;
   margin: 0.4rem 0 1rem;
 }
+
+input {
+  background: var(--bg);
+  color: var(--tx);
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  padding: 0.4rem 0.7rem;
+  font-size: 1rem;
+  margin: 0.3rem 0 0.8rem;
+}
+
+.big {
+  font-size: 2.4rem;
+  letter-spacing: 0.3em;
+  color: var(--gold);
+  font-weight: 800;
+}
+
+.log.turn {
+  border-color: var(--gold);
+}
+
+.err {
+  color: #e88;
+}

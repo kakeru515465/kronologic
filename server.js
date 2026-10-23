@@ -212,8 +212,13 @@ const server = http.createServer((req, res) => {
   }
   const name = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
   if (req.method === "GET" && FILES.has(name)) {
+    const file = path.join(__dirname, name);
+    if (!fs.existsSync(file)) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      return res.end(`ファイルが見つかりません: ${name}`);
+    }
     res.writeHead(200, { "Content-Type": MIME[path.extname(name)] });
-    return fs.createReadStream(path.join(__dirname, name)).pipe(res);
+    return fs.createReadStream(file).on("error", () => res.end()).pipe(res);
   }
   res.writeHead(404); res.end("Not found");
 });
@@ -226,6 +231,12 @@ setInterval(() => {
   }
 }, 25000);
 
-if (require.main === module) server.listen(PORT, () => console.log(`http://localhost:${PORT}/online.html`));
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`http://localhost:${PORT}/online.html`);
+    const missing = [...FILES].filter((f) => !fs.existsSync(path.join(__dirname, f)));
+    if (missing.length) console.log("⚠ 足りないファイルがあります:", missing.join(", "));
+  });
+}
 server.rooms = rooms; // テスト用
 module.exports = server;

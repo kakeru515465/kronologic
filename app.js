@@ -43,6 +43,7 @@ function start() {
           ${E.DIFFICULTIES.map((s, i) => chip("di", i, s, u.di === i)).join("")}
         </div>
         <button class="go" data-act="go">🎲 ゲームを始める</button>
+        <p class="mu"><a href="online.html" style="color:var(--gold)">👥 オンライン対戦（友達と遊ぶ）はこちら</a></p>
       </section>
     </main>`;
 }
