@@ -480,3 +480,43 @@ button:disabled {
 .doc a {
   color: var(--gold);
 }
+
+/* チャット */
+.chatbox {
+  height: 150px;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  margin: 0.4rem 0;
+  font-size: 0.85rem;
+}
+
+.msg {
+  margin: 0.15rem 0;
+  word-break: break-all;
+}
+
+.stamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.4rem;
+}
+
+.stamps .chip {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.4rem;
+}
+
+.chatin {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.chatin input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}

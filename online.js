@@ -27,6 +27,7 @@ const U = {
   map: false,
   rail: true,
   msg: "",
+  chatText: "",
   invited: false,
   err: ""
 };
@@ -37,6 +38,9 @@ if (qs.get("room")) {
   U.code = qs.get("room").toUpperCase().slice(0, 4);
   U.invited = true;
 }
+
+// スタンプ（server.js の STAMPS と、同じ順番にそろえる）
+const STAMPS = ["🤔 考え中", "👍 なるほど", "😱 まさか", "🙏 お願い", "⏰ 急いで", "🎉 やった！"];
 
 // 付箋メモ（自分の画面だけに保存。部屋ごとに、このタブの中で保持）
 let NOTES = [];
@@ -78,8 +82,12 @@ function connect() {
   ES = new EventSource(`${API}/api/events?code=${SES.code}&token=${SES.token}`);
   ES.onmessage = (e) => {
     V = JSON.parse(e.data);
-    // 付箋を入力している最中は、画面の作り直しを後回しにする
-    if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.note) PENDING = true;
+    // 付箋やチャットを入力している最中は、画面の作り直しを後回しにする
+    const ae = document.activeElement;
+    if (ae && ae.dataset && "chat" in ae.dataset) {
+      PENDING = true;
+      refreshChat(); // チャット欄だけは、その場で更新する
+    } else if (ae && ae.dataset && ae.dataset.note) PENDING = true;
     else render();
   };
   ES.onerror = () => {
@@ -110,6 +118,7 @@ function home() {
         <b>部屋コードで参加</b><br>
         <input id="cd" maxlength="4" value="${esc(U.code)}" placeholder="ABCD" style="text-transform:uppercase">
         <button class="go" data-act="join" ${BUSY ? "disabled" : ""}>🚪 参加する</button>
+        <button class="ghost" data-act="watch" ${BUSY ? "disabled" : ""}>👀 観戦する（部屋コードを入れてください）</button>
         ${BUSY ? '<p class="mu">⏳ サーバーに接続中…（しばらく使っていないと、最初は1分ほどかかります）</p>' : ""}
         ${U.err ? `<p class="err">${esc(U.err)}</p>` : ""}
         ${window.__install ? '<button class="ghost" data-act="install">📲 アプリとしてインストール</button>' : ""}
@@ -139,12 +148,15 @@ function lobby() {
         <b>参加者（${V.players.length}/4）</b>
         ${V.players.map((p) => `<div class="log">${esc(p.name)}${p.id === V.host ? " 👑" : ""}${p.id === V.you ? "（あなた）" : ""}</div>`).join("")}
       </section>
+      ${V.spectators.length ? `<p class="mu">👀 観戦: ${V.spectators.map(esc).join("、")}</p>` : ""}
+      <section class="card">${chatPanel()}</section>
       <section class="card">
         <h2>⚙️ ミッション設定</h2>
         ${host
           ? `<b>シナリオ</b><div class="opts">${E.SCENARIOS.map((s, i) => chip("si", i, s, V.si === i)).join("")}</div>
              ${cond(V.si)}
              <b>難易度</b><div class="opts">${E.DIFFICULTIES.map((s, i) => chip("di", i, s, V.di === i)).join("")}</div>
+             <div class="opts">${chip("chaton", "", V.chatOn ? "💬 文字のチャット: ON" : "💬 文字のチャット: OFF", V.chatOn)}</div>
              <button class="go" data-act="start">▶ ゲームを始める</button>`
           : `<p>${E.SCENARIOS[V.si]} ／ ${E.DIFFICULTIES[V.di]}</p>${cond(V.si)}<p class="mu">部屋の主が開始するのを待っています…</p>`}
         ${U.err ? `<p class="err">${esc(U.err)}</p>` : ""}
@@ -169,7 +181,8 @@ function answerForm() {
 }
 
 function game() {
-  const me = V.players.find((p) => p.id === V.you);
+  const spec = V.role === "spectator";
+  const me = V.players.find((p) => p.id === V.you) || { alive: false };
   const sc = V.scenario;
   const ended = V.phase === "end";
   const myTurn = !ended && V.turn === V.you && me.alive;
@@ -214,7 +227,7 @@ function game() {
        <p class="mu">※ 記録がなかったときや、初期配置と同じ情報のときは、もう一度調査できます（連続3回まで）。</p>
        <button class="ghost" data-act="toggleAns">${U.answering ? "解答をやめる" : "📝 調査せずに解答する"}</button>
        ${U.answering ? answerForm() : ""}`
-    : `<p class="mu">自分の手番になるまで、他の人の調査を見て推理しましょう。</p>`;
+    : `<p class="mu">${spec ? "観戦中は、調査や解答はできません。" : "自分の手番になるまで、他の人の調査を見て推理しましょう。"}</p>`;
 
   const reveal = ended
     ? `<section class="card result"><b>🔎 真相</b><p><b>${V.reveal.sol.join("<br>")}</b></p>
@@ -259,12 +272,14 @@ function game() {
       <aside class="left">
         <h2 style="font-size:1.1rem">部屋 ${V.code}</h2>
         <b>👥 プレイヤー</b>${players}
+        ${V.spectators.length ? `<p class="mu">👀 観戦: ${V.spectators.map(esc).join("、")}</p>` : ""}
+        ${chatPanel()}
         <b>📖 シナリオの条件</b>${cond(V.si)}
         <p class="mu"><a href="rules.html" target="_blank" style="color:var(--gold)">📖 遊び方（別のタブで開く）</a></p>
       </aside>
       <main class="center">
         <p class="mu">${sc.type} ／ 難易度 ${sc.diff} ／ 調査 ${V.log.length} 回</p>
-        <section class="card ${myTurn ? "result" : ""}">${banner}${U.err ? `<p class="err">${esc(U.err)}</p>` : ""}</section>
+        <section class="card ${myTurn ? "result" : ""}">${spec && !ended ? `<h2>👀 観戦中（${esc(turnName || "")} の手番）</h2>` : banner}${U.err ? `<p class="err">${esc(U.err)}</p>` : ""}</section>
         <div class="row">
           <section class="card">${mapSvg(U.room, sc.known)}${roomLegend()}</section>
           <section class="card"><h2>🕵️ 調査</h2>${inquiry}</section>
@@ -287,11 +302,51 @@ function game() {
     </div>`;
 }
 
+// チャット欄（スタンプと、短い文字のメッセージ）
+function chatLines() {
+  return (V.chat || []).map((m) => {
+    const who = `<b>${esc(m.name)}${m.spec ? "👀" : ""}</b>`;
+    return m.kind === "stamp"
+      ? `<div class="msg">${who} <span class="stamp">${esc(m.text)}</span></div>`
+      : `<div class="msg">${who}: ${esc(m.text)}</div>`;
+  }).join("") || '<p class="mu">まだ発言はありません。</p>';
+}
+
+function chatPanel() {
+  return `
+    <div class="chat">
+      <b>💬 チャット</b>
+      <div id="chatbox" class="chatbox">${chatLines()}</div>
+      <div class="stamps">${STAMPS.map((s, i) => `<button class="chip" data-act="stamp" data-v="${i}">${s}</button>`).join("")}</div>
+      ${V.chatOn
+        ? `<div class="chatin"><input data-chat maxlength="60" placeholder="短いメッセージ" value="${esc(U.chatText)}"><button class="chip" data-act="chatsend">送信</button></div>`
+        : '<p class="mu">この部屋では、文字のチャットは使えません（スタンプのみ）。</p>'}
+    </div>`;
+}
+
+function refreshChat() {
+  const box = document.getElementById("chatbox");
+  if (!box) return;
+  box.innerHTML = chatLines();
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendChat() {
+  const text = U.chatText.trim();
+  if (!text) return;
+  U.chatText = "";
+  const input = document.querySelector("[data-chat]");
+  if (input) input.value = "";
+  await post("/api/chat", { text });
+}
+
 function render() {
   PENDING = false;
   if (!V) home();
   else if (V.phase === "lobby") lobby();
   else game();
+  const box = document.getElementById("chatbox");
+  if (box) box.scrollTop = box.scrollHeight;
 }
 
 $.addEventListener("click", async (e) => {
@@ -299,18 +354,21 @@ $.addEventListener("click", async (e) => {
   if (!b) return;
   const a = b.dataset.act, v = b.dataset.v;
 
-  if (a === "create" || a === "join") {
+  if (a === "create" || a === "join" || a === "watch") {
     if (BUSY) return;
     BUSY = true;
     render();
     localStorage.setItem("krname", U.name);
-    const j = await post("/api/" + a, { name: U.name, code: U.code.toUpperCase() });
+    const j = await post("/api/" + (a === "create" ? "create" : "join"), { name: U.name, code: U.code.toUpperCase(), spectate: a === "watch" });
     BUSY = false;
     if (!j) return render();
     SES = { code: j.code, token: j.token };
     sessionStorage.setItem("kr", JSON.stringify(SES));
     return connect();
   }
+  if (a === "stamp") return post("/api/stamp", { i: +v });
+  if (a === "chatsend") return sendChat();
+  if (a === "chaton") return post("/api/config", { si: V.si, di: V.di, chatOn: !V.chatOn });
   if (a === "si" || a === "di") return post("/api/config", { si: a === "si" ? +v : V.si, di: a === "di" ? +v : V.di });
   if (a === "start" || a === "again") return post("/api/" + a, {});
   if (a === "invite") {
@@ -333,7 +391,7 @@ $.addEventListener("click", async (e) => {
     return render();
   }
   if (a === "leave") {
-    if (V && V.phase === "lobby") await post("/api/leave", {});
+    if (V && (V.phase === "lobby" || V.role === "spectator")) await post("/api/leave", {});
     return reset();
   }
   if (a === "run") {
@@ -388,12 +446,21 @@ $.addEventListener("input", (e) => {
     saveNotes();
   }
   if (e.target.id === "nm") U.name = e.target.value;
+  if ("chat" in e.target.dataset) U.chatText = e.target.value;
   if (e.target.id === "cd") U.code = e.target.value;
 });
 
 // 付箋の入力が終わったら、後回しにしていた画面の更新を行う
 $.addEventListener("focusout", (e) => {
-  if (PENDING && e.target.dataset.note) setTimeout(() => PENDING && render(), 800);
+  if (PENDING && (e.target.dataset.note || "chat" in e.target.dataset)) setTimeout(() => PENDING && render(), 800);
+});
+
+// チャット欄でEnterを押したら送信（日本語の変換中のEnterは、送信しない）
+$.addEventListener("keydown", (e) => {
+  if ("chat" in e.target.dataset && e.key === "Enter" && !e.isComposing) {
+    e.preventDefault();
+    sendChat();
+  }
 });
 
 // 短いお知らせを、2.5秒だけ表示する

@@ -7,6 +7,9 @@ const E = require("./engine.js");
 
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS = 4;
+const MAX_SPECTATORS = 8;
+// スタンプ（画面側の online.js の STAMPS と、同じ順番にそろえる）
+const STAMPS = ["🤔 考え中", "👍 なるほど", "😱 まさか", "🙏 お願い", "⏰ 急いで", "🎉 やった！"];
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".webmanifest": "application/manifest+json", ".png": "image/png", ".txt": "text/plain; charset=utf-8" };
 const FILES = new Set(["index.html", "online.html", "app.js", "online.js", "common.js", "engine.js", "config.js", "style.css", "pwa.js", "sw.js", "manifest.webmanifest", "icon-192.png", "icon-512.png", "rules.html", "robots.txt"]);
 const rooms = new Map();
@@ -28,7 +31,7 @@ function stripPrivate(entry) {
   return pub;
 }
 
-function viewFor(room, me) {
+function viewFor(room, me, spec = false) {
   const sc = room.scen;
   const ended = room.phase === "end";
   const v = {
@@ -41,7 +44,12 @@ function viewFor(room, me) {
     di: room.di,
     winner: room.winner,
     players: room.players.map((p) => ({ id: p.id, name: p.name, alive: p.alive, connected: p.connected, verdict: p.verdict })),
-    log: room.log.map((l) => (l.by === me.id ? l : stripPrivate(l)))
+    role: spec ? "spectator" : "player",
+    chatOn: room.chatOn,
+    chat: room.chat,
+    spectators: room.spectators.map((x) => x.name),
+    // 観戦者には、個人情報を送らない
+    log: room.log.map((l) => (!spec && l.by === me.id ? l : stripPrivate(l)))
   };
   if (sc) v.scenario = { type: sc.type, diff: sc.diff, clues: sc.clues, known: sc.known, initAll: sc.initAll };
   if (ended) v.reveal = { sol: sc.sol, occ: sc.occ };
@@ -50,8 +58,10 @@ function viewFor(room, me) {
 
 function push(room) {
   for (const c of room.clients) {
-    const me = room.players.find((p) => p.id === c.pid);
-    if (me) c.res.write(`data: ${JSON.stringify(viewFor(room, me))}\n\n`);
+    const player = room.players.find((p) => p.id === c.pid);
+    const sp = !player && room.spectators.find((x) => x.id === c.pid);
+    const me = player || sp;
+    if (me) c.res.write(`data: ${JSON.stringify(viewFor(room, me, !!sp))}\n\n`);
   }
 }
 
@@ -82,7 +92,7 @@ function cleanName(s, fallback) {
 // 名前が重なったときは、2, 3…を付けて見分ける
 function uniqueName(room, name) {
   let n = name, k = 2;
-  while (room.players.some((p) => p.name === n)) n = `${name}${k++}`;
+  while ([...room.players, ...room.spectators].some((p) => p.name === n)) n = `${name}${k++}`;
   return n;
 }
 
@@ -97,6 +107,44 @@ function removePlayer(room, me) {
   });
   if (!room.players.length) rooms.delete(room.code);
   else push(room);
+}
+
+// 観戦者を外す
+function removeSpectator(room, sp) {
+  room.spectators = room.spectators.filter((x) => x !== sp);
+  room.clients.forEach((c) => {
+    if (c.pid === sp.id) {
+      room.clients.delete(c);
+      c.res.end();
+    }
+  });
+  push(room);
+}
+
+function watchSpecGhost(room, sp) {
+  setTimeout(() => {
+    if (!sp.connected && room.spectators.includes(sp)) removeSpectator(room, sp);
+  }, 60000);
+}
+
+// 参加者か観戦者かを、トークンで見分ける
+function getMember(b) {
+  const room = rooms.get(String(b.code || "").toUpperCase());
+  if (!room) fail("部屋が見つかりません。");
+  const player = room.players.find((p) => p.token === b.token);
+  const sp = !player && room.spectators.find((x) => x.token === b.token);
+  if (!player && !sp) fail("この部屋の参加者ではありません。");
+  return { room, who: player || sp, spec: !!sp };
+}
+
+// チャットとスタンプの共通処理（連投は止める。古い発言は50件まで）
+function addChat(room, who, spec, kind, text) {
+  const now = Date.now();
+  if (who.lastMsg && now - who.lastMsg < 700) fail("送信が早すぎます。少し待ってください。");
+  who.lastMsg = now;
+  room.chat.push({ name: who.name, spec, kind, text });
+  if (room.chat.length > 50) room.chat.shift();
+  push(room);
 }
 
 // 接続しないままの参加者（二重送信の片方など）を、60秒後にロビーから外す
@@ -116,7 +164,7 @@ function isFreeResult(sc, res) {
 
 const actions = {
   create(b) {
-    const room = { code: newCode(), phase: "lobby", si: 0, di: 0, players: [], log: [], clients: new Set(), scen: null, order: null, ti: 0, winner: null, made: Date.now() };
+    const room = { code: newCode(), phase: "lobby", si: 0, di: 0, players: [], log: [], clients: new Set(), scen: null, order: null, ti: 0, winner: null, spectators: [], chat: [], chatOn: true, made: Date.now() };
     const me = { id: rid(), token: rid() + rid(), name: cleanName(b.name, "探偵1"), cid: b.cid || null, alive: true, connected: false, verdict: null };
     room.players.push(me);
     rooms.set(room.code, room);
@@ -129,7 +177,17 @@ const actions = {
     if (!room) fail("部屋が見つかりません。");
     const dup = b.cid && room.players.find((p) => p.cid === b.cid);
     if (dup) return { code: room.code, token: dup.token }; // 二重送信は、同じ人として扱う
-    if (room.phase !== "lobby") fail("この部屋はすでに始まっています。");
+    if (b.spectate) {
+      const dupS = b.cid && room.spectators.find((x) => x.cid === b.cid);
+      if (dupS) return { code: room.code, token: dupS.token };
+      if (room.spectators.length >= MAX_SPECTATORS) fail("観戦席が満員です。");
+      const sp = { id: rid(), token: rid() + rid(), name: uniqueName(room, cleanName(b.name, "観戦者" + (room.spectators.length + 1))), cid: b.cid || null, connected: false };
+      room.spectators.push(sp);
+      watchSpecGhost(room, sp);
+      push(room);
+      return { code: room.code, token: sp.token };
+    }
+    if (room.phase !== "lobby") fail("この部屋はすでに始まっています。観戦なら、「観戦する」から入れます。");
     if (room.players.length >= MAX_PLAYERS) fail("この部屋は満員です。");
     const name = uniqueName(room, cleanName(b.name, "探偵" + (room.players.length + 1)));
     const me = { id: rid(), token: rid() + rid(), name, cid: b.cid || null, alive: true, connected: false, verdict: null };
@@ -143,6 +201,7 @@ const actions = {
     const { room, me } = getRoom(b);
     if (!me || me !== room.players[0] || room.phase !== "lobby") fail("操作できません。");
     if (E.SCENARIOS[b.si] && E.DIFFICULTIES[b.di]) { room.si = b.si; room.di = b.di; }
+    if (typeof b.chatOn === "boolean") room.chatOn = b.chatOn;
     push(room);
   },
 
@@ -195,8 +254,27 @@ const actions = {
   },
 
   leave(b) {
-    const { room, me } = getRoom(b);
+    const room = rooms.get(String(b.code || "").toUpperCase());
+    if (!room) return;
+    const sp = room.spectators.find((x) => x.token === b.token);
+    if (sp) return removeSpectator(room, sp);
+    const me = room.players.find((p) => p.token === b.token);
     if (me && room.phase === "lobby") removePlayer(room, me);
+  },
+
+  chat(b) {
+    const { room, who, spec } = getMember(b);
+    if (!room.chatOn) fail("この部屋では、文字のチャットは使えません。");
+    const text = String(b.text || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 60);
+    if (!text) return;
+    addChat(room, who, spec, "chat", text);
+  },
+
+  stamp(b) {
+    const { room, who, spec } = getMember(b);
+    const i = Number(b.i);
+    if (!Number.isInteger(i) || !STAMPS[i]) fail("スタンプが正しくありません。");
+    addChat(room, who, spec, "stamp", STAMPS[i]);
   },
 
   again(b) {
@@ -216,7 +294,9 @@ function send(res, code, obj) {
 
 function handleEvents(req, res, q) {
   const room = rooms.get(String(q.get("code") || "").toUpperCase());
-  const me = room && room.players.find((p) => p.token === q.get("token"));
+  const player = room && room.players.find((p) => p.token === q.get("token"));
+  const sp = room && !player && room.spectators.find((x) => x.token === q.get("token"));
+  const me = player || sp;
   if (!me) return send(res, 404, { error: "部屋が見つかりません。" });
   res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive", "Access-Control-Allow-Origin": "*" });
   const client = { res, pid: me.id };
@@ -229,6 +309,7 @@ function handleEvents(req, res, q) {
       me.connected = false;
       push(room);
       if (room.phase === "lobby") watchGhost(room, me);
+      if (sp) watchSpecGhost(room, me);
       // 手番の人が切断したまま45秒たったら、手番を飛ばす
       if (room.phase === "play" && room.order[room.ti] === me.id) {
         setTimeout(() => {
