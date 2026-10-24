@@ -373,3 +373,67 @@ input {
 .err {
   color: #e88;
 }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.9;
+  color: var(--mu);
+}
+
+ruby rt {
+  font-size: 0.55em;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+/* スマホ用 */
+@media (max-width: 700px) {
+  body {
+    font-size: 14px;
+  }
+  .start {
+    margin: 3vh auto;
+  }
+  .start h1 {
+    font-size: 1.7rem;
+  }
+  .card {
+    padding: 0.8rem;
+  }
+  .center {
+    padding: 0.7rem;
+  }
+  .left, .right {
+    padding: 0.8rem;
+  }
+  .chip, .ghost, .go, .run {
+    padding: 0.55rem 0.8rem;
+  }
+  .cast {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .edge {
+    top: auto;
+    bottom: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+  }
+  .mapopen.noright .edge {
+    right: 0;
+  }
+  .big {
+    font-size: 2rem;
+  }
+}

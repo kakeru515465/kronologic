@@ -56,6 +56,7 @@ function push(room) {
 }
 
 function nextTurn(room) {
+  room.free = 0;
   const n = room.order.length;
   for (let i = 1; i <= n; i++) {
     const idx = (room.ti + i) % n;
@@ -78,24 +79,62 @@ function cleanName(s, fallback) {
   return String(s || "").trim().slice(0, 12) || fallback;
 }
 
+// 名前が重なったときは、2, 3…を付けて見分ける
+function uniqueName(room, name) {
+  let n = name, k = 2;
+  while (room.players.some((p) => p.name === n)) n = `${name}${k++}`;
+  return n;
+}
+
+// ロビーからプレイヤーを外す（誰もいなくなったら部屋も消す）
+function removePlayer(room, me) {
+  room.players = room.players.filter((p) => p !== me);
+  room.clients.forEach((c) => {
+    if (c.pid === me.id) {
+      room.clients.delete(c);
+      c.res.end();
+    }
+  });
+  if (!room.players.length) rooms.delete(room.code);
+  else push(room);
+}
+
+// 接続しないままの参加者（二重送信の片方など）を、60秒後にロビーから外す
+function watchGhost(room, me) {
+  setTimeout(() => {
+    if (!me.connected && room.phase === "lobby" && room.players.includes(me)) removePlayer(room, me);
+  }, 60000);
+}
+
+// 記録がなかった場合や、初期配置と同じ情報の場合は、手番を続けて調査できる
+function isFreeResult(sc, res) {
+  if (res.count === 0) return true;
+  const known = sc.known.map(([c, r]) => c + "_" + r);
+  if (res.type === "PLACE_TIME") return res.t === 1 && (sc.initAll || (res.char && known.includes(res.char + "_" + res.roomIdx)));
+  return res.time === 1 && known.includes(res.name + "_" + res.roomIdx);
+}
+
 const actions = {
   create(b) {
     const room = { code: newCode(), phase: "lobby", si: 0, di: 0, players: [], log: [], clients: new Set(), scen: null, order: null, ti: 0, winner: null, made: Date.now() };
-    const me = { id: rid(), token: rid() + rid(), name: cleanName(b.name, "探偵1"), alive: true, connected: false, verdict: null };
+    const me = { id: rid(), token: rid() + rid(), name: cleanName(b.name, "探偵1"), cid: b.cid || null, alive: true, connected: false, verdict: null };
     room.players.push(me);
     rooms.set(room.code, room);
+    watchGhost(room, me);
     return { code: room.code, token: me.token };
   },
 
   join(b) {
     const room = rooms.get(String(b.code || "").toUpperCase());
     if (!room) fail("部屋が見つかりません。");
+    const dup = b.cid && room.players.find((p) => p.cid === b.cid);
+    if (dup) return { code: room.code, token: dup.token }; // 二重送信は、同じ人として扱う
     if (room.phase !== "lobby") fail("この部屋はすでに始まっています。");
     if (room.players.length >= MAX_PLAYERS) fail("この部屋は満員です。");
-    let name = cleanName(b.name, "探偵" + (room.players.length + 1));
-    if (room.players.some((p) => p.name === name)) name += room.players.length + 1;
-    const me = { id: rid(), token: rid() + rid(), name, alive: true, connected: false, verdict: null };
+    const name = uniqueName(room, cleanName(b.name, "探偵" + (room.players.length + 1)));
+    const me = { id: rid(), token: rid() + rid(), name, cid: b.cid || null, alive: true, connected: false, verdict: null };
     room.players.push(me);
+    watchGhost(room, me);
     push(room);
     return { code: room.code, token: me.token };
   },
@@ -112,7 +151,7 @@ const actions = {
     if (!me || me !== room.players[0] || room.phase !== "lobby") fail("操作できません。");
     const sc = E.generate(E.SCENARIOS[room.si], E.DIFFICULTIES[room.di]);
     if (!sc) fail("事件を生成できませんでした。もう一度お試しください。");
-    Object.assign(room, { scen: sc, phase: "play", log: [], winner: null, order: shuffle(room.players.map((p) => p.id)), ti: 0 });
+    Object.assign(room, { scen: sc, phase: "play", log: [], winner: null, order: shuffle(room.players.map((p) => p.id)), ti: 0, free: 0 });
     room.players.forEach((p) => { p.alive = true; p.verdict = null; });
     push(room);
   },
@@ -131,8 +170,10 @@ const actions = {
       if (!E.CHARS.includes(b.char)) fail("人物が正しくありません。");
       res = E.inquirePlacePerson(room.scen, r, b.char);
     }
-    room.log.push({ ...res, seq: room.log.length + 1, by: me.id, byName: me.name });
-    nextTurn(room);
+    const free = isFreeResult(room.scen, res) && (room.free || 0) < 3; // 続けて調査できるのは連続3回まで
+    room.log.push({ ...res, seq: room.log.length + 1, by: me.id, byName: me.name, free });
+    if (free) room.free = (room.free || 0) + 1;
+    else nextTurn(room);
     push(room);
   },
 
@@ -151,6 +192,11 @@ const actions = {
       else nextTurn(room);
     }
     push(room);
+  },
+
+  leave(b) {
+    const { room, me } = getRoom(b);
+    if (me && room.phase === "lobby") removePlayer(room, me);
   },
 
   again(b) {
@@ -182,6 +228,7 @@ function handleEvents(req, res, q) {
     if (![...room.clients].some((c) => c.pid === me.id)) {
       me.connected = false;
       push(room);
+      if (room.phase === "lobby") watchGhost(room, me);
       // 手番の人が切断したまま45秒たったら、手番を飛ばす
       if (room.phase === "play" && room.order[room.ti] === me.id) {
         setTimeout(() => {

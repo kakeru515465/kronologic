@@ -5,6 +5,14 @@ const $ = document.getElementById("app");
 let V = null; // サーバーから届いた最新の状態
 let SES = JSON.parse(sessionStorage.getItem("kr") || "null"); // { code, token }
 let ES = null;
+let BUSY = false; // 通信中は、ボタンの二重押しを受け付けない
+
+// このタブを見分けるための番号（同じタブからの二重の参加を、同じ人として扱うため）
+const CID = sessionStorage.getItem("krcid") || (() => {
+  const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  sessionStorage.setItem("krcid", id);
+  return id;
+})();
 
 const U = {
   name: localStorage.getItem("krname") || "",
@@ -42,7 +50,7 @@ async function post(path, body) {
     const r = await fetch(API + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, ...(SES || {}) })
+      body: JSON.stringify({ ...body, cid: CID, ...(SES || {}) })
     });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || "エラーが発生しました。");
@@ -66,11 +74,11 @@ function connect() {
     else render();
   };
   ES.onerror = () => {
-    if (ES.readyState === 2) leave("部屋に接続できませんでした。");
+    if (ES.readyState === 2) reset("部屋に接続できませんでした。");
   };
 }
 
-function leave(msg) {
+function reset(msg) {
   if (ES) ES.close();
   sessionStorage.removeItem("kr");
   SES = null;
@@ -87,11 +95,12 @@ function home() {
       <section class="card">
         <b>名前</b><br>
         <input id="nm" maxlength="12" value="${esc(U.name)}" placeholder="あなたの名前">
-        <button class="go" data-act="create">🎲 部屋を作る</button>
+        <button class="go" data-act="create" ${BUSY ? "disabled" : ""}>🎲 部屋を作る</button>
         <hr style="border-color:var(--line);margin:1.2rem 0">
         <b>部屋コードで参加</b><br>
         <input id="cd" maxlength="4" value="${esc(U.code)}" placeholder="ABCD" style="text-transform:uppercase">
-        <button class="go" data-act="join">🚪 参加する</button>
+        <button class="go" data-act="join" ${BUSY ? "disabled" : ""}>🚪 参加する</button>
+        ${BUSY ? '<p class="mu">⏳ サーバーに接続中…（しばらく使っていないと、最初は1分ほどかかります）</p>' : ""}
         ${U.err ? `<p class="err">${esc(U.err)}</p>` : ""}
         <p class="mu"><a href="index.html" style="color:var(--gold)">← 1人用はこちら</a></p>
       </section>
@@ -149,13 +158,15 @@ function game() {
   const myTurn = !ended && V.turn === V.you && me.alive;
   const turnName = (V.players.find((p) => p.id === V.turn) || {}).name;
   const winner = V.players.find((p) => p.id === V.winner);
+  const last = V.log[V.log.length - 1];
   loadNotes();
   const mapOpen = U.tab === "board" && U.map;
+  const again = myTurn && last && last.by === V.you && last.free; // 続けて調査できる状態
 
   const banner = ended
     ? `<h2>${winner ? `🏆 ${esc(winner.name)} が事件を解決！` : "😵 全員が脱落…事件は迷宮入り"}</h2>`
     : myTurn
-    ? `<h2>👉 あなたの手番です</h2>`
+    ? `<h2>👉 あなたの手番です${again ? "（もう一度調査できます）" : ""}</h2>`
     : me.alive
     ? `<h2>⏳ ${esc(turnName || "")} の手番です</h2>`
     : `<h2>❌ あなたは脱落しました（観戦中）</h2>`;
@@ -164,7 +175,7 @@ function game() {
     <div class="log">
       <b>#${l.seq} ${esc(l.byName)}</b>
       ${l.type === "PLACE_TIME" ? `⏳ 【${l.room}】×【時間 ${l.t}】` : `🎴 【${l.room}】×【${l.character}】`}<br>
-      ${l.shared}${l.priv ? `<br>${l.priv}` : ""}
+      ${l.shared}${l.priv ? `<br>${l.priv}` : ""}${l.free ? '<br><span class="mu">🔁 手番は続きます（記録なし／初期情報と同じ）</span>' : ""}
     </div>`).join("") || '<p class="mu">まだ調査はありません。</p>';
 
   const players = V.players.map((p) => `
@@ -182,7 +193,8 @@ function game() {
        <div class="opts">${U.mode === "time"
          ? [1, 2, 3, 4, 5, 6].map((t) => chip("time", t, "時間" + t, U.time === t)).join("")
          : CHARS.map((n, i) => chip("ci", i, `${n}(${NAMES[n]})`, U.ci === i)).join("")}</div>
-       <button class="run" data-act="run">🔎 調査する（手番終了）</button>
+       <button class="run" data-act="run">🔎 調査する</button>
+       <p class="mu">※ 記録がなかったときや、初期配置と同じ情報のときは、もう一度調査できます（連続3回まで）。</p>
        <button class="ghost" data-act="toggleAns">${U.answering ? "解答をやめる" : "📝 調査せずに解答する"}</button>
        ${U.answering ? answerForm() : ""}`
     : `<p class="mu">自分の手番になるまで、他の人の調査を見て推理しましょう。</p>`;
@@ -221,7 +233,7 @@ function game() {
           <h2 style="font-size:1.1rem">🗺 館内マップ</h2>
           <button class="chip" data-act="map" title="閉じる">✕</button>
         </div>
-        ${mapSvg(U.room)}
+        ${mapSvg(U.room, sc.known)}
       </aside>`
     : "";
 
@@ -236,7 +248,7 @@ function game() {
         <p class="mu">${sc.type} ／ 難易度 ${sc.diff} ／ 調査 ${V.log.length} 回</p>
         <section class="card ${myTurn ? "result" : ""}">${banner}${U.err ? `<p class="err">${esc(U.err)}</p>` : ""}</section>
         <div class="row">
-          <section class="card">${mapSvg(U.room)}</section>
+          <section class="card">${mapSvg(U.room, sc.known)}${roomLegend()}</section>
           <section class="card"><h2>🕵️ 調査</h2>${inquiry}</section>
         </div>
         ${reveal}
@@ -270,16 +282,23 @@ $.addEventListener("click", async (e) => {
   const a = b.dataset.act, v = b.dataset.v;
 
   if (a === "create" || a === "join") {
+    if (BUSY) return;
+    BUSY = true;
+    render();
     localStorage.setItem("krname", U.name);
     const j = await post("/api/" + a, { name: U.name, code: U.code.toUpperCase() });
-    if (!j) return;
+    BUSY = false;
+    if (!j) return render();
     SES = { code: j.code, token: j.token };
     sessionStorage.setItem("kr", JSON.stringify(SES));
     return connect();
   }
   if (a === "si" || a === "di") return post("/api/config", { si: a === "si" ? +v : V.si, di: a === "di" ? +v : V.di });
   if (a === "start" || a === "again") return post("/api/" + a, {});
-  if (a === "leave") return leave();
+  if (a === "leave") {
+    if (V && V.phase === "lobby") await post("/api/leave", {});
+    return reset();
+  }
   if (a === "run") {
     const j = await post("/api/inquire", { mode: U.mode, room: U.room, time: U.time, char: CHARS[U.ci] });
     if (j) U.answering = false;

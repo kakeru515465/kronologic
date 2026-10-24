@@ -134,7 +134,7 @@ function game() {
         <h2 style="font-size:1.1rem">🗺 館内マップ</h2>
         <button class="chip" data-act="map" title="閉じる">✕</button>
       </div>
-      ${mapSvg(u.room)}
+      ${mapSvg(u.room, sc.known)}
     </aside>` : "";
 
   const log = S.hist.filter((h) => u.filter === "all" || (u.filter === "time") === (h.type === "PLACE_TIME")).reverse()
@@ -167,7 +167,7 @@ function game() {
       <main class="center">
         <p class="mu">${sc.type} ／ 難易度 ${sc.diff} ／ 調査 ${S.hist.length} 回</p>
         <div class="row">
-          <section class="card">${mapSvg(u.room)}</section>
+          <section class="card">${mapSvg(u.room, sc.known)}${roomLegend()}</section>
           <section class="card">
             <h2>🕵️ 調査</h2>
             <div class="opts">

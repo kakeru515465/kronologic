@@ -83,7 +83,8 @@ const bd = (c) => `<span class="bd" style="background:${COL[c]}">${c}</span>`;
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const chip = (act, v, label, on) => `<button class="chip ${on ? "on" : ""}" data-act="${act}" data-v="${v}">${label}</button>`;
 
-function mapSvg(sel) {
+// 館内マップ。sel: 光らせる部屋、known: 時間1の初期配置 [[人物名, 部屋番号], ...]
+function mapSvg(sel, known = []) {
   const R = [
     [20, 40, "#4a3326", "#c9a24b"],
     [220, 40, "#1e2a40", "#5b8bd9"],
@@ -102,15 +103,39 @@ function mapSvg(sel) {
     [140, 305, 220, 305]
   ];
 
+  // 部屋の中に、時間1にいる人物を丸いバッジで表示する
+  const tokens = (r, i) => {
+    const codes = known.filter(([, ri]) => ri === i).map(([n]) => NAMES[n]);
+    return codes.map((code, k) => {
+      const cx = r[0] + 60 + (k - (codes.length - 1) / 2) * 24;
+      return `
+        <circle cx="${cx}" cy="${r[1] + 38}" r="9" fill="${COL[code]}" stroke="#fff" stroke-width="1"/>
+        <text x="${cx}" y="${r[1] + 42}" fill="#fff" font-size="11" text-anchor="middle" font-weight="800">${code}</text>`;
+    }).join("");
+  };
+
   return `
     <svg viewBox="0 0 360 340" width="100%" style="background:#10121a;border-radius:8px">
+      ${known.length ? '<text x="10" y="22" fill="#9a9486" font-size="11">時間1の初期配置</text>' : ""}
       ${L.map((l) => `<line x1="${l[0]}" y1="${l[1]}" x2="${l[2]}" y2="${l[3]}" stroke="#fff" stroke-width="3"/>`).join("")}
       ${R.map((r, i) => `
         <rect class="rm ${i === sel ? "sel" : ""}" x="${r[0]}" y="${r[1]}" width="120" height="50" rx="3" fill="${r[2]}" stroke="${r[3]}" stroke-width="2"/>
-        <text x="${r[0] + 60}" y="${r[1] + 30}" fill="#fff" font-size="14" text-anchor="middle" font-weight="700">${ROOMS[i]}</text>
+        <text x="${r[0] + 60}" y="${r[1] + 20}" fill="#fff" font-size="14" text-anchor="middle" font-weight="700">${ROOMS[i]}</text>
+        ${tokens(r, i)}
       `).join("")}
     </svg>`;
 }
+
+// 場所の読み方（漢字の部分だけにフリガナ）
+const ROOM_RUBY = [
+  "<ruby>大<rt>だい</rt></ruby>ロビー",
+  "<ruby>大階段<rt>だいかいだん</rt></ruby>",
+  "<ruby>桟敷席<rt>さじきせき</rt></ruby>",
+  "<ruby>舞台<rt>ぶたい</rt></ruby>",
+  "ダンスホール",
+  "<ruby>音楽室<rt>おんがくしつ</rt></ruby>"
+];
+const roomLegend = () => `<div class="legend">${ROOM_RUBY.map((h) => `<span>${h}</span>`).join("")}</div>`;
 
 // 判明ボードのHTML。sc: 事件の公開情報（known, initAll）、hist: 調査記録
 function boardHtml(sc, hist) {
