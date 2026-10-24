@@ -1,6 +1,6 @@
 // オフラインでも1人用が開けるようにする（常に最新を優先し、通信できないときだけ保存分を使う）
 const CACHE = "kronologic-v1";
-const FILES = ["index.html", "online.html", "app.js", "online.js", "common.js", "engine.js", "config.js", "style.css", "manifest.webmanifest", "icon-192.png"];
+const FILES = ["index.html", "online.html", "rules.html", "app.js", "online.js", "common.js", "engine.js", "config.js", "style.css", "manifest.webmanifest", "icon-192.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));

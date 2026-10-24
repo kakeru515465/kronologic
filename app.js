@@ -29,7 +29,7 @@ function start() {
   const u = S.u;
   $.innerHTML = `
     <main class="start">
-      <h1>KRONOLOGIC: PARIS 1920</h1>
+      <h1>${TITLE}</h1>
       <p class="sub">ソロ捜査モード</p>
       <section class="card">
         <h2>⚙️ ミッション設定</h2>
@@ -43,7 +43,8 @@ function start() {
           ${E.DIFFICULTIES.map((s, i) => chip("di", i, s, u.di === i)).join("")}
         </div>
         <button class="go" data-act="go">🎲 ゲームを始める</button>
-        <p class="mu"><a href="online.html" style="color:var(--gold)">👥 オンライン対戦（友達と遊ぶ）はこちら</a></p>
+        <p class="mu"><a href="online.html" style="color:var(--gold)">👥 オンライン対戦（友達と遊ぶ）はこちら</a>　<a href="rules.html" style="color:var(--gold)">📖 遊び方</a></p>
+        <p class="mu fine">${DISCLAIMER}</p>
       </section>
     </main>`;
 }
@@ -154,7 +155,7 @@ function game() {
   $.innerHTML = `
     <div class="game ${u.rail ? "" : "noright"} ${mapOpen ? "mapopen" : ""}">
       <aside class="left">
-        <h2 style="font-size:1.1rem">KRONOLOGIC</h2>
+        <h2 style="font-size:1.1rem">${TITLE}</h2>
         <b>👥 登場人物</b>
         <div class="cast">
           ${CHARS.map((n) => `<div><div class="av" style="background:${COL[NAMES[n]]}">${NAMES[n]}</div>${n}${SEX[n]}</div>`).join("")}
@@ -162,6 +163,7 @@ function game() {
         <b>📖 シナリオの条件</b>
         ${cond(u.si)}
         <button class="ghost" data-act="back">← 設定に戻る</button>
+        <p class="mu"><a href="rules.html" target="_blank" style="color:var(--gold)">📖 遊び方（別のタブで開く）</a></p>
       </aside>
 
       <main class="center">

@@ -99,7 +99,7 @@ function reset(msg) {
 function home() {
   $.innerHTML = `
     <main class="start">
-      <h1>KRONOLOGIC: PARIS 1920</h1>
+      <h1>${TITLE}</h1>
       <p class="sub">オンライン対戦（手番制・最大4人）</p>
       ${U.invited ? `<section class="card result"><b>📨 部屋 ${esc(U.code)} に招待されています</b><p class="mu">名前を入れて「参加する」を押してください。</p></section>` : ""}
       <section class="card">
@@ -117,7 +117,8 @@ function home() {
           <summary>📲 アプリとして使うには</summary>
           <p>PCのChrome / Edgeは、アドレスバーの右にあるインストールのアイコンから。iPhoneは、Safariの共有ボタンから「ホーム画面に追加」を選びます。</p>
         </details>
-        <p class="mu"><a href="index.html" style="color:var(--gold)">← 1人用はこちら</a></p>
+        <p class="mu"><a href="index.html" style="color:var(--gold)">← 1人用はこちら</a>　<a href="rules.html" style="color:var(--gold)">📖 遊び方</a></p>
+        <p class="mu fine">${DISCLAIMER}</p>
       </section>
     </main>`;
 }
@@ -259,6 +260,7 @@ function game() {
         <h2 style="font-size:1.1rem">部屋 ${V.code}</h2>
         <b>👥 プレイヤー</b>${players}
         <b>📖 シナリオの条件</b>${cond(V.si)}
+        <p class="mu"><a href="rules.html" target="_blank" style="color:var(--gold)">📖 遊び方（別のタブで開く）</a></p>
       </aside>
       <main class="center">
         <p class="mu">${sc.type} ／ 難易度 ${sc.diff} ／ 調査 ${V.log.length} 回</p>
@@ -313,9 +315,9 @@ $.addEventListener("click", async (e) => {
   if (a === "start" || a === "again") return post("/api/" + a, {});
   if (a === "invite") {
     const url = `${location.origin}${location.pathname}?room=${V.code}`;
-    const text = `KRONOLOGICで対戦しよう！ 部屋コード: ${V.code}`;
+    const text = `${TITLE}で対戦しよう！ 部屋コード: ${V.code}`;
     try {
-      if (navigator.share) await navigator.share({ title: "KRONOLOGIC", text, url });
+      if (navigator.share) await navigator.share({ title: TITLE, text, url });
       else {
         await navigator.clipboard.writeText(`${text}\n${url}`);
         flash("招待リンクをコピーしました。友達に送ってください。");
