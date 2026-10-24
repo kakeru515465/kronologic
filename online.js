@@ -26,8 +26,17 @@ const U = {
   tab: "log",
   map: false,
   rail: true,
+  msg: "",
+  invited: false,
   err: ""
 };
+
+// 招待リンク（?room=ABCD）で開かれたときは、部屋コードを入れておく
+const qs = new URLSearchParams(location.search);
+if (qs.get("room")) {
+  U.code = qs.get("room").toUpperCase().slice(0, 4);
+  U.invited = true;
+}
 
 // 付箋メモ（自分の画面だけに保存。部屋ごとに、このタブの中で保持）
 let NOTES = [];
@@ -92,6 +101,7 @@ function home() {
     <main class="start">
       <h1>KRONOLOGIC: PARIS 1920</h1>
       <p class="sub">オンライン対戦（手番制・最大4人）</p>
+      ${U.invited ? `<section class="card result"><b>📨 部屋 ${esc(U.code)} に招待されています</b><p class="mu">名前を入れて「参加する」を押してください。</p></section>` : ""}
       <section class="card">
         <b>名前</b><br>
         <input id="nm" maxlength="12" value="${esc(U.name)}" placeholder="あなたの名前">
@@ -102,6 +112,11 @@ function home() {
         <button class="go" data-act="join" ${BUSY ? "disabled" : ""}>🚪 参加する</button>
         ${BUSY ? '<p class="mu">⏳ サーバーに接続中…（しばらく使っていないと、最初は1分ほどかかります）</p>' : ""}
         ${U.err ? `<p class="err">${esc(U.err)}</p>` : ""}
+        ${window.__install ? '<button class="ghost" data-act="install">📲 アプリとしてインストール</button>' : ""}
+        <details class="mu">
+          <summary>📲 アプリとして使うには</summary>
+          <p>PCのChrome / Edgeは、アドレスバーの右にあるインストールのアイコンから。iPhoneは、Safariの共有ボタンから「ホーム画面に追加」を選びます。</p>
+        </details>
         <p class="mu"><a href="index.html" style="color:var(--gold)">← 1人用はこちら</a></p>
       </section>
     </main>`;
@@ -117,7 +132,8 @@ function lobby() {
     <main class="start">
       <h1>部屋コード</h1>
       <div class="big">${V.code}</div>
-      <p class="mu">このコードを友達に伝えてください。</p>
+      <button class="ghost" data-act="invite">📨 招待リンクを共有・コピー</button>
+      ${U.msg ? `<p class="mu">${esc(U.msg)}</p>` : '<p class="mu">リンクを送ると、押すだけで、この部屋に入れます。</p>'}
       <section class="card">
         <b>参加者（${V.players.length}/4）</b>
         ${V.players.map((p) => `<div class="log">${esc(p.name)}${p.id === V.host ? " 👑" : ""}${p.id === V.you ? "（あなた）" : ""}</div>`).join("")}
@@ -295,6 +311,25 @@ $.addEventListener("click", async (e) => {
   }
   if (a === "si" || a === "di") return post("/api/config", { si: a === "si" ? +v : V.si, di: a === "di" ? +v : V.di });
   if (a === "start" || a === "again") return post("/api/" + a, {});
+  if (a === "invite") {
+    const url = `${location.origin}${location.pathname}?room=${V.code}`;
+    const text = `KRONOLOGICで対戦しよう！ 部屋コード: ${V.code}`;
+    try {
+      if (navigator.share) await navigator.share({ title: "KRONOLOGIC", text, url });
+      else {
+        await navigator.clipboard.writeText(`${text}\n${url}`);
+        flash("招待リンクをコピーしました。友達に送ってください。");
+      }
+    } catch (err) {
+      if (err && err.name !== "AbortError") prompt("このリンクをコピーして送ってください", url);
+    }
+    return;
+  }
+  if (a === "install") {
+    if (window.__install) await window.__install.prompt();
+    window.__install = null;
+    return render();
+  }
   if (a === "leave") {
     if (V && V.phase === "lobby") await post("/api/leave", {});
     return reset();
@@ -357,6 +392,21 @@ $.addEventListener("input", (e) => {
 // 付箋の入力が終わったら、後回しにしていた画面の更新を行う
 $.addEventListener("focusout", (e) => {
   if (PENDING && e.target.dataset.note) setTimeout(() => PENDING && render(), 800);
+});
+
+// 短いお知らせを、2.5秒だけ表示する
+function flash(msg) {
+  U.msg = msg;
+  render();
+  setTimeout(() => {
+    U.msg = "";
+    render();
+  }, 2500);
+}
+
+// インストールできる状態になったら、入口の画面にボタンを出す
+window.addEventListener("pwa-ready", () => {
+  if (!V) render();
 });
 
 connect();

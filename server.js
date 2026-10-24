@@ -7,8 +7,8 @@ const E = require("./engine.js");
 
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS = 4;
-const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8" };
-const FILES = new Set(["index.html", "online.html", "app.js", "online.js", "common.js", "engine.js", "config.js", "style.css"]);
+const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".webmanifest": "application/manifest+json", ".png": "image/png" };
+const FILES = new Set(["index.html", "online.html", "app.js", "online.js", "common.js", "engine.js", "config.js", "style.css", "pwa.js", "sw.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"]);
 const rooms = new Map();
 
 const rid = () => Math.random().toString(36).slice(2, 10);
