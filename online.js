@@ -5,6 +5,9 @@ const $ = document.getElementById("app");
 let V = null; // サーバーから届いた最新の状態
 let SES = JSON.parse(sessionStorage.getItem("kr") || "null"); // { code, token }
 let ES = null;
+let SERVER_READY = false; // サーバーが起きて、つながる状態か
+let WAKE_FAIL = false;
+let WAKE_START = Date.now();
 let BUSY = false; // 通信中は、ボタンの二重押しを受け付けない
 
 // このタブを見分けるための番号（同じタブからの二重の参加を、同じ人として扱うため）
@@ -110,15 +113,16 @@ function home() {
       <h1>${TITLE}</h1>
       <p class="sub">オンライン対戦（手番制・最大4人）</p>
       ${U.invited ? `<section class="card result"><b>📨 部屋 ${esc(U.code)} に招待されています</b><p class="mu">名前を入れて「参加する」を押してください。</p></section>` : ""}
+      ${wakeBanner()}
       <section class="card">
         <b>名前</b><br>
         <input id="nm" maxlength="12" value="${esc(U.name)}" placeholder="あなたの名前">
-        <button class="go" data-act="create" ${BUSY ? "disabled" : ""}>🎲 部屋を作る</button>
+        <button class="go" data-act="create" ${BUSY || !SERVER_READY ? "disabled" : ""}>🎲 部屋を作る</button>
         <hr style="border-color:var(--line);margin:1.2rem 0">
         <b>部屋コードで参加</b><br>
         <input id="cd" maxlength="4" value="${esc(U.code)}" placeholder="ABCD" style="text-transform:uppercase">
-        <button class="go" data-act="join" ${BUSY ? "disabled" : ""}>🚪 参加する</button>
-        <button class="ghost" data-act="watch" ${BUSY ? "disabled" : ""}>👀 観戦する（部屋コードを入れてください）</button>
+        <button class="go" data-act="join" ${BUSY || !SERVER_READY ? "disabled" : ""}>🚪 参加する</button>
+        <button class="ghost" data-act="watch" ${BUSY || !SERVER_READY ? "disabled" : ""}>👀 観戦する（部屋コードを入れてください）</button>
         ${BUSY ? '<p class="mu">⏳ サーバーに接続中…（しばらく使っていないと、最初は1分ほどかかります）</p>' : ""}
         ${U.err ? `<p class="err">${esc(U.err)}</p>` : ""}
         ${window.__install ? '<button class="ghost" data-act="install">📲 アプリとしてインストール</button>' : ""}
@@ -302,6 +306,38 @@ function game() {
     </div>`;
 }
 
+// サーバーが眠っているときの待ち画面
+function wakeBanner() {
+  if (SERVER_READY) return "";
+  if (WAKE_FAIL) return '<section class="card"><p class="err">サーバーにつながりません。しばらくしてから、ページを再読み込みしてください。</p></section>';
+  const sec = Math.round((Date.now() - WAKE_START) / 1000);
+  return `
+    <section class="card wake">
+      <b>🔌 サーバーを起こしています…</b>
+      <p class="mu">しばらく使っていないと、最初は1分ほどかかります。このまま、お待ちください。（${sec}秒経過）</p>
+    </section>`;
+}
+
+// サーバーが応答するまで、3秒おきに確かめる（最大150秒）
+async function wakeServer() {
+  WAKE_START = Date.now();
+  while (!SERVER_READY && Date.now() - WAKE_START < 150000) {
+    try {
+      const r = await fetch(API + "/api/ping", { cache: "no-store" });
+      const j = await r.json();
+      if (j && j.ok) SERVER_READY = true;
+    } catch (e) {
+      // 起動中。少し待って、もう一度確かめる
+    }
+    if (!SERVER_READY) {
+      if (!V) render();
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+  }
+  if (!SERVER_READY) WAKE_FAIL = true;
+  if (!V) render();
+}
+
 // チャット欄（スタンプと、短い文字のメッセージ）
 function chatLines() {
   return (V.chat || []).map((m) => {
@@ -480,3 +516,4 @@ window.addEventListener("pwa-ready", () => {
 
 connect();
 render();
+wakeServer();

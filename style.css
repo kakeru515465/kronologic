@@ -520,3 +520,18 @@ button:disabled {
   min-width: 0;
   margin: 0;
 }
+
+/* サーバーを起こしている間の表示 */
+.wake {
+  border-color: var(--gold);
+}
+
+.wake b {
+  animation: pulse 1.6s infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.4;
+  }
+}

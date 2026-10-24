@@ -326,6 +326,8 @@ const server = http.createServer((req, res) => {
     res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type" });
     return res.end();
   }
+  // サーバーが起きているかを、画面から確かめるための窓口
+  if (req.method === "GET" && url.pathname === "/api/ping") return send(res, 200, { ok: true });
   if (req.method === "GET" && url.pathname === "/api/events") return handleEvents(req, res, url.searchParams);
   if (req.method === "POST" && url.pathname.startsWith("/api/")) {
     const fn = actions[url.pathname.slice(5)];
