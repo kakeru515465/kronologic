@@ -1,5 +1,6 @@
 const S = {
   scen: null,
+  asked: {}, // 行った調査の印（同じ調査を、2回しないため）
   ans: {},
   done: false,
   result: null,
@@ -122,13 +123,15 @@ function startGame() {
     alert("条件を満たす問題を生成できませんでした。もう一度お試しください。");
     return false;
   }
-  Object.assign(S, { scen: s, hist: [], last: null, notes: [], ans: {}, done: false, result: null, t0: Date.now(), t1: 0 });
+  Object.assign(S, { scen: s, asked: {}, hist: [], last: null, notes: [], ans: {}, done: false, result: null, t0: Date.now(), t1: 0 });
   Object.assign(u, { tab: "log", filter: "all", map: false });
   return true;
 }
 
 function game() {
   const u = S.u, sc = S.scen, tm = u.mode === "time", mapOpen = u.tab === "board" && u.map;
+  const asked = S.asked;
+  const already = !!asked[u.mode === "time" ? `T${u.room}_${u.time}` : `P${u.room}_${u.ci}`]; // いま選んでいる調査を、すでに行ったか
   const drawer = mapOpen ? `
     <aside class="mapdrawer">
       <div style="display:flex;justify-content:space-between">
@@ -182,12 +185,14 @@ function game() {
             </select>
             <div class="opts">
               ${tm
-                ? [1, 2, 3, 4, 5, 6].map((t) => chip("time", t, "時間" + t, u.time === t)).join("")
-                : CHARS.map((n, i) => chip("ci", i, `${n}(${NAMES[n]})`, u.ci === i)).join("")}
+                ? [1, 2, 3, 4, 5, 6].map((t) => chip("time", t, "時間" + t + (asked[`T${u.room}_${t}`] ? " ✓" : ""), u.time === t)).join("")
+                : CHARS.map((n, i) => chip("ci", i, `${n}(${NAMES[n]})${asked[`P${u.room}_${i}`] ? " ✓" : ""}`, u.ci === i)).join("")}
             </div>
             ${S.done
               ? '<p class="mu">🔒 解答済みのため、調査はできません。</p>'
-              : '<button class="run" data-act="run">🔎 重ね合わせ実行</button>'}
+              : already
+                ? '<button class="run" disabled>✔ この調査は、すでに行いました</button><p class="mu">結果は、下の「調査記録」で見られます。</p>'
+                : '<button class="run" data-act="run">🔎 重ね合わせ実行</button>'}
             ${S.last ? `<div class="res sh">${S.last.shared}</div><div class="res pv">${S.last.priv}</div>` : ""}
           </section>
         </div>
@@ -248,6 +253,9 @@ $.addEventListener("click", (e) => {
   else if (a === "time") u.time = +v;
   else if (a === "ci") u.ci = +v;
   else if (a === "run" && !S.done) {
+    const key = u.mode === "time" ? `T${u.room}_${u.time}` : `P${u.room}_${u.ci}`;
+    if (S.asked[key]) return alert("この調査は、すでに行いました。結果は、調査記録で確認できます。");
+    S.asked[key] = true;
     const r = u.mode === "time"
       ? E.inquirePlaceTime(S.scen, u.room, u.time)
       : E.inquirePlacePerson(S.scen, u.room, CHARS[u.ci]);

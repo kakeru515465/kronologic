@@ -83,6 +83,12 @@ const OPTS = {
   time: () => [1, 2, 3, 4, 5, 6].map((t) => [t, `時間${t}`])
 };
 
+// 登場人物の一覧（男女がわかるように、♂♀を付ける）
+const castHtml = () => `
+  <div class="cast">
+    ${CHARS.map((n) => `<div><div class="av" style="background:${COL[NAMES[n]]}">${NAMES[n]}</div>${n}${SEX[n]}</div>`).join("")}
+  </div>`;
+
 const bd = (c) => `<span class="bd" style="background:${COL[c]}">${c}</span>`;
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const chip = (act, v, label, on) => `<button class="chip ${on ? "on" : ""}" data-act="${act}" data-v="${v}">${label}</button>`;

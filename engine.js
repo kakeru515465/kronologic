@@ -189,7 +189,11 @@
   }
 
   function inquirePlacePerson(s, r, c) {
-    const v = s.visits[c][r], n = v.length, t = n ? pick(v) : null;
+    const v = s.visits[c][r], n = v.length;
+    // 初期配置（時間1）で、すでにわかっている滞在は避けて選ぶ（他の滞在があるとき）
+    const knownHere = s.known.some(([name, room]) => name === c && room === r);
+    const fresh = knownHere ? v.filter((x) => x !== 1) : v;
+    const t = n ? pick(fresh.length ? fresh : v) : null;
     return {
       type: "PLACE_PERSON",
       room: ROOMS[r],
@@ -204,7 +208,10 @@
   }
 
   function inquirePlaceTime(s, r, t) {
-    const o = s.occ[r][t - 1], n = o.length, c = n ? pick(o) : null;
+    const o = s.occ[r][t - 1], n = o.length;
+    // 時間1は、初期配置ですでにわかっている人物を避けて選ぶ（他にいるとき）
+    const fresh = t === 1 ? o.filter((x) => !s.known.some(([name, room]) => name === x && room === r)) : o;
+    const c = n ? pick(fresh.length ? fresh : o) : null;
     return {
       type: "PLACE_TIME",
       room: ROOMS[r],

@@ -277,8 +277,10 @@ function game() {
         <h2 style="font-size:1.1rem">部屋 ${V.code}</h2>
         <b>👥 プレイヤー</b>${players}
         ${V.spectators.length ? `<p class="mu">👀 観戦: ${V.spectators.map(esc).join("、")}</p>` : ""}
-        ${chatPanel()}
+        <b>👥 登場人物</b>
+        ${castHtml()}
         <b>📖 シナリオの条件</b>${cond(V.si)}
+        ${chatPanel()}
         <p class="mu"><a href="rules.html" target="_blank" style="color:var(--gold)">📖 遊び方（別のタブで開く）</a></p>
       </aside>
       <main class="center">
