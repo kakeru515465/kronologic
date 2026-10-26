@@ -234,11 +234,9 @@ function game() {
     : `<p class="mu">${spec ? "観戦中は、調査や解答はできません。" : "自分の手番になるまで、他の人の調査を見て推理しましょう。"}</p>`;
 
   const reveal = ended
-    ? `<section class="card result"><b>🔎 真相</b><p><b>${V.reveal.sol.join("<br>")}</b></p>
-        <table>
-          <tr><th></th>${[1, 2, 3, 4, 5, 6].map((t) => `<th>時間${t}</th>`).join("")}</tr>
-          ${ROOMS.map((r, i) => `<tr><th>${r}</th>${V.reveal.occ[i].map((o) => `<td>${o.map((c) => bd(NAMES[c])).join(" ") || "-"}</td>`).join("")}</tr>`).join("")}
-        </table>
+    ? `<section class="card result"><b>🔎 真相</b>
+        ${truthGrid(V.reveal.occ, V.reveal.truth)}
+        ${verdictBox(V.reveal.sol)}
         ${V.host === V.you ? '<button class="go" data-act="again">🎲 もう一度（ロビーへ戻る）</button>' : '<p class="mu">部屋の主が、次の事件を始めるのを待ちましょう。</p>'}
         <button class="ghost" data-act="leave">← 退出する</button>
       </section>`

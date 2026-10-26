@@ -8,7 +8,7 @@
     使用人: "S"
   };
   const CHARS = Object.keys(NAMES);
-  const ROOMS = ["大ロビー", "大階段", "桟敷席", "舞台", "ダンスホール", "音楽室"];
+  const ROOMS = ["大ロビー", "大階段", "桟敷席", "舞台", "ダンスホール", "音楽堂"];
   const FEM = new Set(["冒険家", "男爵夫人", "使用人"]);
   const MALE = new Set(["運転手", "探偵", "記者"]);
   const EDGES = [[0, 1], [0, 2], [1, 2], [2, 3], [3, 4], [3, 5], [4, 5]];
@@ -76,7 +76,7 @@
     if ((type.includes("シナリオⅠ") || type.includes("シナリオⅣ")) && occ.some((r) => r[0].length === 2)) return null; // 時間1に二人きりの場面を作らない
 
     const easy = diff.includes("初級");
-    let sol = null, hint = null, answers = null;
+    let sol = null, hint = null, answers = null, truth = null;
 
     if (type.includes("シナリオⅠ")) {
       const dp = paths["探偵"], ev = [];
@@ -138,6 +138,7 @@
       if (ev.length !== 1) return null;
       const [a, b, r, t] = ev[0], vic = occ[r][5];
       if (!vic.length) return null;
+      truth = { type: "bomb", culprits: [a, b], plant: [r, t], blast: [r, 5] }; // 0始まりの時間番号
       answers = [
         { label: "犯人", expect: { m: MALE.has(a) ? a : b, f: MALE.has(a) ? b : a } },
         { label: "爆弾を仕掛けた場所・時間", expect: { room: r, time: t + 1 } },
@@ -159,6 +160,7 @@
       }
       if (nm.length !== 1) return null;
       hint = pick(nm[0]);
+      truth = { type: "lovers", pair: [nm[0][0], nm[0][1]] };
       answers = [{ label: "すれ違う恋人たち", expect: { m: nm[0][0], f: nm[0][1] } }];
       sol = [`1. すれ違う恋人たち: 【${cn(nm[0][0])}】 と 【${cn(nm[0][1])}】 (全時間で1度も同じ部屋にいなかった唯一の男女ペア)`];
     }
@@ -177,7 +179,7 @@
 
     const known = (easy ? sh : diff.includes("中級") ? sh.slice(0, 4) : sh.slice(0, 2)).map((c) => [c, paths[c][0]]);
 
-    return { type, diff, paths, occ, visits, sol, clues, known, initAll: easy, answers };
+    return { type, diff, paths, occ, visits, sol, clues, known, initAll: easy, answers, truth };
   }
 
   function generate(type, diff) {

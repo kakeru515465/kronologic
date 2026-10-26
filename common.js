@@ -143,9 +143,34 @@ const ROOM_RUBY = [
   "<ruby>桟敷席<rt>さじきせき</rt></ruby>",
   "<ruby>舞台<rt>ぶたい</rt></ruby>",
   "ダンスホール",
-  "<ruby>音楽室<rt>おんがくしつ</rt></ruby>"
+  "<ruby>音楽堂<rt>おんがくどう</rt></ruby>"
 ];
 const roomLegend = () => `<div class="legend">${ROOM_RUBY.map((h) => `<span>${h}</span>`).join("")}</div>`;
+
+// 真相の表（説明書の「真相」ページ風）。縦が場所、横が時間。人物は色付きの丸で示す。
+// truth: Ⅳなら爆弾（💣＝仕掛けた場所と時間、💥＝爆発）、Ⅴなら恋人たち（その2人の居場所に色を付ける）
+function truthGrid(occ, truth) {
+  const lovers = truth && truth.type === "lovers" ? truth.pair : [];
+  const bomb = truth && truth.type === "bomb" ? truth : null;
+  const cell = (r, t) => {
+    const here = occ[r][t];
+    const lit = here.find((x) => lovers.includes(x));
+    const style = lit ? ` style="background:${COL[NAMES[lit]]}66"` : "";
+    const mark = bomb
+      ? (bomb.plant[0] === r && bomb.plant[1] === t ? '<span class="mk2">💣</span>' : "") + (bomb.blast[0] === r && bomb.blast[1] === t ? '<span class="mk2">💥</span>' : "")
+      : "";
+    const tokens = here.map((x) => `<span class="tk" style="background:${COL[NAMES[x]]}">${NAMES[x]}</span>`).join("");
+    return `<td class="tgc"${style}>${mark}${tokens}</td>`;
+  };
+  return `
+    <table class="tg">
+      <tr><th></th>${[1, 2, 3, 4, 5, 6].map((t) => `<th><span class="tn">${t}</span></th>`).join("")}</tr>
+      ${ROOMS.map((room, r) => `<tr><th class="tgr">${room}</th>${[0, 1, 2, 3, 4, 5].map((t) => cell(r, t)).join("")}</tr>`).join("")}
+    </table>`;
+}
+
+// 答え（結論）の枠
+const verdictBox = (lines) => `<div class="verdict">${lines.map((l) => `<div>● ${l.replace(/^\d+\.\s*/, "")}</div>`).join("")}</div>`;
 
 // 判明ボードのHTML。sc: 事件の公開情報（known, initAll）、hist: 調査記録
 function boardHtml(sc, hist) {

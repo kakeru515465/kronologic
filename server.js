@@ -52,7 +52,7 @@ function viewFor(room, me, spec = false) {
     log: room.log.map((l) => (!spec && l.by === me.id ? l : stripPrivate(l)))
   };
   if (sc) v.scenario = { type: sc.type, diff: sc.diff, clues: sc.clues, known: sc.known, initAll: sc.initAll };
-  if (ended) v.reveal = { sol: sc.sol, occ: sc.occ };
+  if (ended) v.reveal = { sol: sc.sol, occ: sc.occ, truth: sc.truth };
   return v;
 }
 

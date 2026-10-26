@@ -535,3 +535,56 @@ button:disabled {
     opacity: 0.4;
   }
 }
+
+/* 真相の表（説明書の「真相」ページ風） */
+.tg {
+  table-layout: fixed;
+}
+
+.tg th, .tg td {
+  height: 3rem;
+}
+
+.tgr {
+  width: 5.2rem;
+  font-size: 0.75rem;
+}
+
+.tn {
+  display: inline-flex;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  color: var(--gold);
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+}
+
+.tk {
+  display: inline-flex;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin: 0.1rem;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 800;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #fff8;
+}
+
+.mk2 {
+  font-size: 1.1rem;
+}
+
+.verdict {
+  background: var(--panel);
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  padding: 0.6rem 0.9rem;
+  margin: 0.6rem 0 1rem;
+  font-weight: 700;
+}

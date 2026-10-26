@@ -97,14 +97,8 @@ function resultView() {
     <p class="mu">調査 ${S.hist.length} 回 ／ 所要時間 ${time}</p>
     ${rows}
     <b>🔎 真相</b>
-    <p><b>${sc.sol.join("<br>")}</b></p>
-    <table>
-      <tr><th></th>${[1, 2, 3, 4, 5, 6].map((t) => `<th>時間${t}</th>`).join("")}</tr>
-      ${ROOMS.map((r, i) => `
-        <tr>
-          <th>${r}</th>${sc.occ[i].map((o) => `<td>${o.map((c) => bd(NAMES[c])).join(" ") || "-"}</td>`).join("")}
-        </tr>`).join("")}
-    </table>
+    ${truthGrid(sc.occ, sc.truth)}
+    ${verdictBox(sc.sol)}
     <div class="opts">
       <button class="chip" data-act="replay">🎲 同じ設定でもう一度</button>
       <button class="chip" data-act="back">⚙️ 設定に戻る</button>
