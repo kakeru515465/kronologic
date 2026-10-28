@@ -93,6 +93,40 @@ const bd = (c) => `<span class="bd" style="background:${COL[c]}">${c}</span>`;
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const chip = (act, v, label, on) => `<button class="chip ${on ? "on" : ""}" data-act="${act}" data-v="${v}">${label}</button>`;
 
+// 付箋の大きさ（高さ）を、いま画面にあるものから読み取って、付箋のデータに記録する（変わったら true）
+function syncNoteSizes(notes) {
+  if (!document.querySelectorAll) return false;
+  let changed = false;
+  document.querySelectorAll("textarea[data-note]").forEach((el) => {
+    const n = notes.find((x) => x.id === +el.dataset.note);
+    const h = Math.round(el.offsetHeight);
+    if (n && h > 20 && n.h !== h) {
+      n.h = h;
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+// 付箋を、上（-1）か下（+1）へ入れ替える
+function moveNote(notes, id, d) {
+  const i = notes.findIndex((n) => n.id === id);
+  const j = i + d;
+  if (i < 0 || j < 0 || j >= notes.length) return;
+  [notes[i], notes[j]] = [notes[j], notes[i]];
+}
+
+// 付箋1枚のHTML（保存した大きさ・並べ替えボタン付き）
+const noteHtml = (n) => `
+  <div class="note" style="background:${n.c}">
+    <textarea data-note="${n.id}" style="height:${n.h || 80}px" placeholder="例: Dは時間3に舞台にいた">${esc(n.t)}</textarea>
+    <div class="nb">
+      <button data-act="nup" data-v="${n.id}" title="上へ">▲</button>
+      <button data-act="ndown" data-v="${n.id}" title="下へ">▼</button>
+      <button data-act="del" data-v="${n.id}">🗑️ 削除</button>
+    </div>
+  </div>`;
+
 // 館内マップ。sel: 光らせる部屋、known: 時間1の初期配置 [[人物名, 部屋番号], ...]
 function mapSvg(sel, known = []) {
   const R = [

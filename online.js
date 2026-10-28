@@ -90,7 +90,7 @@ function connect() {
     if (ae && ae.dataset && "chat" in ae.dataset) {
       PENDING = true;
       refreshChat(); // チャット欄だけは、その場で更新する
-    } else if (ae && ae.dataset && ae.dataset.note) PENDING = true;
+    } else if (ae && ((ae.dataset && ae.dataset.note) || ae.tagName === "SELECT")) PENDING = true; // 入力や選択の途中は、作り直さない
     else render();
   };
   ES.onerror = () => {
@@ -101,6 +101,7 @@ function connect() {
 function reset(msg) {
   if (ES) ES.close();
   sessionStorage.removeItem("kr");
+  localStorage.removeItem("kr_last");
   SES = null;
   V = null;
   U.err = msg || "";
@@ -114,6 +115,7 @@ function home() {
       <p class="sub">オンライン対戦（手番制・最大4人）</p>
       ${U.invited ? `<section class="card result"><b>📨 部屋 ${esc(U.code)} に招待されています</b><p class="mu">名前を入れて「参加する」を押してください。</p></section>` : ""}
       ${wakeBanner()}
+      ${rejoinCard()}
       <section class="card">
         <b>名前</b><br>
         <input id="nm" maxlength="12" value="${esc(U.name)}" placeholder="あなたの名前">
@@ -191,14 +193,16 @@ function game() {
   const ended = V.phase === "end";
   const myTurn = !ended && V.turn === V.you && me.alive;
   const turnName = (V.players.find((p) => p.id === V.turn) || {}).name;
-  const winner = V.players.find((p) => p.id === V.winner);
+  const winners = V.players.filter((p) => (V.winners || []).includes(p.id));
   const last = V.log[V.log.length - 1];
   loadNotes();
   const mapOpen = U.tab === "board" && U.map;
   const again = myTurn && last && last.by === V.you && last.free; // 続けて調査できる状態
 
   const banner = ended
-    ? `<h2>${winner ? `🏆 ${esc(winner.name)} が事件を解決！` : "😵 全員が脱落…事件は迷宮入り"}</h2>`
+    ? `<h2>${winners.length ? `🏆 ${winners.map((p) => esc(p.name)).join("、")} が事件を解決！` : "😵 全員が脱落…事件は迷宮入り"}</h2>`
+    : winners.length
+    ? `<h2>🏁 正解者が出ました。まもなく結果が出ます…</h2>`
     : myTurn
     ? `<h2>👉 あなたの手番です${again ? "（もう一度調査できます）" : ""}</h2>`
     : me.alive
@@ -228,10 +232,14 @@ function game() {
          ? [1, 2, 3, 4, 5, 6].map((t) => chip("time", t, "時間" + t, U.time === t)).join("")
          : CHARS.map((n, i) => chip("ci", i, `${n}(${NAMES[n]})`, U.ci === i)).join("")}</div>
        <button class="run" data-act="run">🔎 調査する</button>
-       <p class="mu">※ 記録がなかったときや、初期配置と同じ情報のときは、もう一度調査できます（連続3回まで）。</p>
-       <button class="ghost" data-act="toggleAns">${U.answering ? "解答をやめる" : "📝 調査せずに解答する"}</button>
-       ${U.answering ? answerForm() : ""}`
+       <p class="mu">※ 記録がなかったときや、初期配置と同じ情報のときは、もう一度調査できます（連続3回まで）。</p>`
     : `<p class="mu">${spec ? "観戦中は、調査や解答はできません。" : "自分の手番になるまで、他の人の調査を見て推理しましょう。"}</p>`;
+
+  // 解答は、手番でなくても、いつでもできる（1人1回）
+  const canAnswer = !ended && !spec && me.alive && !me.verdict;
+  const answerBox = canAnswer
+    ? `<section class="card"><button class="ghost" data-act="toggleAns">${U.answering ? "解答をやめる" : "📝 解答する（いつでも・1回限り）"}</button>${U.answering ? answerForm() : ""}</section>`
+    : "";
 
   const reveal = ended
     ? `<section class="card result"><b>🔎 真相</b>
@@ -242,11 +250,7 @@ function game() {
       </section>`
     : "";
 
-  const notesHtml = NOTES.map((n) => `
-    <div class="note" style="background:${n.c}">
-      <textarea data-note="${n.id}" placeholder="例: Dは時間3に舞台にいた">${esc(n.t)}</textarea>
-      <button data-act="del" data-v="${n.id}">🗑️ 削除</button>
-    </div>`).join("");
+  const notesHtml = NOTES.map(noteHtml).join("");
 
   const rail = U.rail
     ? `<aside class="right">
@@ -288,6 +292,7 @@ function game() {
           <section class="card">${mapSvg(U.room, sc.known)}${roomLegend()}</section>
           <section class="card"><h2>🕵️ 調査</h2>${inquiry}</section>
         </div>
+        ${answerBox}
         ${reveal}
         <section class="card"><b>📍 初期情報</b>${sc.clues.map((c) => `<div class="log">${c}</div>`).join("")}</section>
         <section class="card">
@@ -376,9 +381,36 @@ async function sendChat() {
   await post("/api/chat", { text });
 }
 
+// 部屋に再接続している間の画面
+function reconnecting() {
+  $.innerHTML = `
+    <main class="start">
+      <h1>${TITLE}</h1>
+      ${wakeBanner()}
+      <section class="card">
+        <p class="mu">⏳ 部屋に再接続しています…</p>
+        <button class="ghost" data-act="leave">← 部屋を離れる</button>
+      </section>
+    </main>`;
+}
+
+// 前回の部屋に戻るためのカード（ブラウザが閉じられたり、別の画面になったときのため）
+function rejoinCard() {
+  let last = null;
+  try {
+    last = JSON.parse(localStorage.getItem("kr_last") || "null");
+  } catch (e) {
+    last = null;
+  }
+  if (!last || SES || Date.now() - last.at > 6 * 3600 * 1000) return "";
+  return `<section class="card result"><b>前回の部屋 ${esc(last.code)} に戻れます</b><button class="go" data-act="rejoin">↩ 前回の部屋に戻る</button></section>`;
+}
+
 function render() {
+  if (V && NOTES.length && syncNoteSizes(NOTES)) saveNotes(); // 付箋の大きさを、作り直す前に保存する
   PENDING = false;
-  if (!V) home();
+  if (!V && SES) reconnecting();
+  else if (!V) home();
   else if (V.phase === "lobby") lobby();
   else game();
   const box = document.getElementById("chatbox");
@@ -400,7 +432,19 @@ $.addEventListener("click", async (e) => {
     if (!j) return render();
     SES = { code: j.code, token: j.token };
     sessionStorage.setItem("kr", JSON.stringify(SES));
+    localStorage.setItem("kr_last", JSON.stringify({ ...SES, at: Date.now() }));
     return connect();
+  }
+  if (a === "rejoin") {
+    try {
+      const last = JSON.parse(localStorage.getItem("kr_last") || "null");
+      SES = { code: last.code, token: last.token };
+      sessionStorage.setItem("kr", JSON.stringify(SES));
+      render();
+      return connect();
+    } catch (err) {
+      return reset("前回の部屋に戻れませんでした。");
+    }
   }
   if (a === "stamp") return post("/api/stamp", { i: +v });
   if (a === "chatsend") return sendChat();
@@ -454,6 +498,9 @@ $.addEventListener("click", async (e) => {
     NOTES.unshift({ id: NID, t: "", c: NCOL[(NID - 1) % 4] });
     NID++;
     saveNotes();
+  } else if (a === "nup" || a === "ndown") {
+    moveNote(NOTES, +v, a === "nup" ? -1 : 1);
+    saveNotes();
   } else if (a === "del") {
     NOTES = NOTES.filter((n) => n.id !== +v);
     saveNotes();
@@ -486,9 +533,22 @@ $.addEventListener("input", (e) => {
   if (e.target.id === "cd") U.code = e.target.value;
 });
 
+// 付箋の大きさを変えたとき、他のアプリに切り替えるときにも保存する。
+// 他のアプリから戻ったときは、接続し直して、最新の状態にする。
+$.addEventListener("pointerup", () => {
+  if (V && syncNoteSizes(NOTES)) saveNotes();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    if (V && syncNoteSizes(NOTES)) saveNotes();
+  } else if (SES) {
+    connect();
+  }
+});
+
 // 付箋の入力が終わったら、後回しにしていた画面の更新を行う
 $.addEventListener("focusout", (e) => {
-  if (PENDING && (e.target.dataset.note || "chat" in e.target.dataset)) setTimeout(() => PENDING && render(), 800);
+  if (PENDING && (e.target.dataset.note || "chat" in e.target.dataset || e.target.tagName === "SELECT")) setTimeout(() => PENDING && render(), 800);
 });
 
 // チャット欄でEnterを押したら送信（日本語の変換中のEnterは、送信しない）

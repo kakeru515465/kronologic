@@ -179,7 +179,23 @@
 
     const known = (easy ? sh : diff.includes("中級") ? sh.slice(0, 4) : sh.slice(0, 2)).map((c) => [c, paths[c][0]]);
 
-    return { type, diff, paths, occ, visits, sol, clues, known, initAll: easy, answers, truth };
+    // 場所カードのように、調査の結果は、問題を作るときに決めておく（同じ調査は、いつも同じ結果）。
+    // 個人情報は、初期配置ですでにわかっている情報と、できるだけ重ならないように選ぶ。
+    const namesAt = (r) => known.filter(([, room]) => room === r).map(([name]) => name);
+    const cards = {
+      time: ROOMS.map((_, r) => Array.from({ length: T }, (__, t) => {
+        const o = occ[r][t];
+        const fresh = t === 0 ? o.filter((x) => !namesAt(r).includes(x)) : o;
+        return o.length ? pick(fresh.length ? fresh : o) : null;
+      })),
+      person: Object.fromEntries(CHARS.map((c) => [c, ROOMS.map((_, r) => {
+        const v = visits[c][r];
+        const fresh = known.some(([name, room]) => name === c && room === r) ? v.filter((x) => x !== 1) : v;
+        return v.length ? pick(fresh.length ? fresh : v) : null;
+      })]))
+    };
+
+    return { type, diff, paths, occ, visits, sol, clues, known, initAll: easy, answers, truth, cards };
   }
 
   function generate(type, diff) {
@@ -192,10 +208,7 @@
 
   function inquirePlacePerson(s, r, c) {
     const v = s.visits[c][r], n = v.length;
-    // 初期配置（時間1）で、すでにわかっている滞在は避けて選ぶ（他の滞在があるとき）
-    const knownHere = s.known.some(([name, room]) => name === c && room === r);
-    const fresh = knownHere ? v.filter((x) => x !== 1) : v;
-    const t = n ? pick(fresh.length ? fresh : v) : null;
+    const t = s.cards.person[c][r]; // 決めておいた結果
     return {
       type: "PLACE_PERSON",
       room: ROOMS[r],
@@ -211,9 +224,7 @@
 
   function inquirePlaceTime(s, r, t) {
     const o = s.occ[r][t - 1], n = o.length;
-    // 時間1は、初期配置ですでにわかっている人物を避けて選ぶ（他にいるとき）
-    const fresh = t === 1 ? o.filter((x) => !s.known.some(([name, room]) => name === x && room === r)) : o;
-    const c = n ? pick(fresh.length ? fresh : o) : null;
+    const c = s.cards.time[r][t - 1]; // 決めておいた結果
     return {
       type: "PLACE_TIME",
       room: ROOMS[r],

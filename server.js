@@ -43,6 +43,7 @@ function viewFor(room, me, spec = false) {
     si: room.si,
     di: room.di,
     winner: room.winner,
+    winners: room.winners,
     players: room.players.map((p) => ({ id: p.id, name: p.name, alive: p.alive, connected: p.connected, verdict: p.verdict })),
     role: spec ? "spectator" : "player",
     chatOn: room.chatOn,
@@ -162,9 +163,16 @@ function isFreeResult(sc, res) {
   return res.time === 1 && known.includes(res.name + "_" + res.roomIdx);
 }
 
+// 最初の正解から5秒たったら、結果を出して終了する
+function finishGame(room) {
+  room.endTimer = null;
+  if (room.phase === "play") room.phase = "end";
+  push(room);
+}
+
 const actions = {
   create(b) {
-    const room = { code: newCode(), phase: "lobby", si: 0, di: 0, players: [], log: [], clients: new Set(), scen: null, order: null, ti: 0, winner: null, spectators: [], chat: [], chatOn: true, made: Date.now() };
+    const room = { code: newCode(), phase: "lobby", si: 0, di: 0, players: [], log: [], clients: new Set(), scen: null, order: null, ti: 0, winner: null, winners: [], endTimer: null, spectators: [], chat: [], chatOn: true, made: Date.now() };
     const me = { id: rid(), token: rid() + rid(), name: cleanName(b.name, "探偵1"), cid: b.cid || null, alive: true, connected: false, verdict: null };
     room.players.push(me);
     rooms.set(room.code, room);
@@ -210,7 +218,7 @@ const actions = {
     if (!me || me !== room.players[0] || room.phase !== "lobby") fail("操作できません。");
     const sc = E.generate(E.SCENARIOS[room.si], E.DIFFICULTIES[room.di]);
     if (!sc) fail("事件を生成できませんでした。もう一度お試しください。");
-    Object.assign(room, { scen: sc, phase: "play", log: [], winner: null, order: shuffle(room.players.map((p) => p.id)), ti: 0, free: 0 });
+    Object.assign(room, { scen: sc, phase: "play", log: [], winner: null, order: shuffle(room.players.map((p) => p.id)), ti: 0, free: 0, winners: [], endTimer: null });
     room.players.forEach((p) => { p.alive = true; p.verdict = null; });
     push(room);
   },
@@ -218,6 +226,7 @@ const actions = {
   inquire(b) {
     const { room, me } = getRoom(b);
     if (!me || room.phase !== "play" || room.order[room.ti] !== me.id || !me.alive) fail("あなたの手番ではありません。");
+    if (room.endTimer) fail("正解者が出たので、まもなく終了します。");
     const r = Number(b.room);
     if (!Number.isInteger(r) || r < 0 || r > 5) fail("場所が正しくありません。");
     let res;
@@ -236,19 +245,23 @@ const actions = {
     push(room);
   },
 
+  // 解答は、手番でなくても、いつでもできる（1人1回。間違えたら脱落）
   answer(b) {
     const { room, me } = getRoom(b);
-    if (!me || room.phase !== "play" || room.order[room.ti] !== me.id || !me.alive) fail("あなたの手番ではありません。");
+    if (!me || room.phase !== "play" || !me.alive || me.verdict) fail("いまは解答できません。");
+    const wasTurn = room.order[room.ti] === me.id;
     const results = E.judge(room.scen, b.input || {});
     if (results.every((x) => x.ok)) {
       me.verdict = "correct";
-      room.winner = me.id;
-      room.phase = "end";
+      room.winners.push(me.id);
+      room.winner = room.winners[0];
+      // 同時に正解した人と、勝利を分かち合えるように、5秒だけ待ってから終了する
+      if (!room.endTimer) room.endTimer = setTimeout(() => finishGame(room), 5000);
     } else {
       me.verdict = "wrong";
       me.alive = false;
       if (room.players.every((p) => !p.alive)) room.phase = "end";
-      else nextTurn(room);
+      else if (wasTurn) nextTurn(room); // 手番の人が脱落したときだけ、手番を進める
     }
     push(room);
   },
@@ -280,7 +293,7 @@ const actions = {
   again(b) {
     const { room, me } = getRoom(b);
     if (!me || me !== room.players[0] || room.phase !== "end") fail("操作できません。");
-    Object.assign(room, { phase: "lobby", scen: null, log: [], order: null, ti: 0, winner: null });
+    Object.assign(room, { phase: "lobby", scen: null, log: [], order: null, ti: 0, winner: null, winners: [] });
     room.players.forEach((p) => { p.alive = true; p.verdict = null; });
     push(room);
   }

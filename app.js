@@ -143,11 +143,7 @@ function game() {
       </div>`).join("") || '<p class="mu">まだ調査を行っていません。</p>';
 
 
-  const notes = S.notes.map((n) => `
-    <div class="note" style="background:${n.c}">
-      <textarea data-note="${n.id}" placeholder="例: Dは時間3に舞台にいた">${esc(n.t)}</textarea>
-      <button data-act="del" data-v="${n.id}">🗑️ 削除</button>
-    </div>`).join("");
+  const notes = S.notes.map(noteHtml).join("");
 
   $.innerHTML = `
     <div class="game ${u.rail ? "" : "noright"} ${mapOpen ? "mapopen" : ""}">
@@ -229,7 +225,50 @@ function game() {
     </div>`;
 }
 
-const draw = () => (S.scen ? game() : start());
+// 1人用の状態を、端末に保存・復元する。
+// スマホで他のアプリに切り替えている間に、ブラウザがページを破棄しても、続きから再開できる。
+const SAVE_KEY = "kr_solo_v1";
+
+function saveSolo() {
+  try {
+    if (S.scen) localStorage.setItem(SAVE_KEY, JSON.stringify(S));
+    else localStorage.removeItem(SAVE_KEY);
+  } catch (e) {
+    // 保存できなくても、遊ぶのには影響しない
+  }
+}
+
+function loadSolo() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (raw) Object.assign(S, JSON.parse(raw));
+  } catch (e) {
+    localStorage.removeItem(SAVE_KEY);
+  }
+}
+
+// 描く前に、付箋の大きさを記録し、描いたあとに状態を保存する
+const draw = () => {
+  syncNoteSizes(S.notes);
+  if (S.scen) game();
+  else start();
+  saveSolo();
+};
+
+// 付箋の大きさを変えたとき、他のアプリに切り替えるときにも、保存する
+$.addEventListener("pointerup", () => {
+  if (syncNoteSizes(S.notes)) saveSolo();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    syncNoteSizes(S.notes);
+    saveSolo();
+  }
+});
+window.addEventListener("pagehide", () => {
+  syncNoteSizes(S.notes);
+  saveSolo();
+});
 
 $.addEventListener("click", (e) => {
   const b = e.target.closest("[data-act]");
@@ -281,6 +320,10 @@ $.addEventListener("click", (e) => {
   else if (a === "add") {
     S.notes.unshift({ id: S.nid, t: "", c: NCOL[(S.nid - 1) % 4] });
     S.nid++;
+  } else if (a === "nup") {
+    moveNote(S.notes, +v, -1);
+  } else if (a === "ndown") {
+    moveNote(S.notes, +v, 1);
   } else if (a === "del") {
     S.notes = S.notes.filter((n) => n.id !== +v);
   }
@@ -299,7 +342,11 @@ $.addEventListener("change", (e) => {
 
 $.addEventListener("input", (e) => {
   const n = S.notes.find((x) => x.id === +e.target.dataset.note);
-  if (n) n.t = e.target.value;
+  if (n) {
+    n.t = e.target.value;
+    saveSolo();
+  }
 });
 
+loadSolo();
 draw();

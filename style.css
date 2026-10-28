@@ -588,3 +588,21 @@ button:disabled {
   margin: 0.6rem 0 1rem;
   font-weight: 700;
 }
+
+/* 付箋の下のボタン（並べ替え・削除） */
+.nb {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.nb button {
+  padding: 0.15rem 0.5rem;
+}
+
+@media (max-width: 700px) {
+  .nb button {
+    padding: 0.4rem 0.8rem;
+    font-size: 1rem;
+  }
+}
