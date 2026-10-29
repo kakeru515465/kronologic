@@ -228,10 +228,12 @@ function game() {
 // 1人用の状態を、端末に保存・復元する。
 // スマホで他のアプリに切り替えている間に、ブラウザがページを破棄しても、続きから再開できる。
 const SAVE_KEY = "kr_solo_v1";
+// 最後に操作してから、この時間（時間）がたったら、保存した状態を消す（1日にしたいときは 24 にする）
+const SAVE_TTL_HOURS = 3;
 
 function saveSolo() {
   try {
-    if (S.scen) localStorage.setItem(SAVE_KEY, JSON.stringify(S));
+    if (S.scen) localStorage.setItem(SAVE_KEY, JSON.stringify({ at: Date.now(), state: S })); // at：最後に保存した時刻
     else localStorage.removeItem(SAVE_KEY);
   } catch (e) {
     // 保存できなくても、遊ぶのには影響しない
@@ -241,7 +243,11 @@ function saveSolo() {
 function loadSolo() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) Object.assign(S, JSON.parse(raw));
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    // 古い保存（時刻がない／時間がたちすぎている）は、使わずに消す
+    if (!saved.at || Date.now() - saved.at > SAVE_TTL_HOURS * 3600 * 1000) localStorage.removeItem(SAVE_KEY);
+    else Object.assign(S, saved.state);
   } catch (e) {
     localStorage.removeItem(SAVE_KEY);
   }
