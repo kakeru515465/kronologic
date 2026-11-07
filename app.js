@@ -146,7 +146,8 @@ function game() {
   const notes = S.notes.map(noteHtml).join("");
 
   $.innerHTML = `
-    <div class="game ${u.rail ? "" : "noright"} ${mapOpen ? "mapopen" : ""}">
+    <div class="game ${u.rail ? "" : "noright"} ${mapOpen ? "mapopen" : ""}" style="${gameStyle()}">
+      ${grip("left")}${u.rail ? grip("right") : ""}
       <aside class="left">
         <h2 style="font-size:1.1rem">${TITLE}</h2>
         <b>👥 登場人物</b>
@@ -228,13 +229,15 @@ function game() {
 // 1人用の状態を、端末に保存・復元する。
 // スマホで他のアプリに切り替えている間に、ブラウザがページを破棄しても、続きから再開できる。
 const SAVE_KEY = "kr_solo_v1";
-// 最後に操作してから、この時間（時間）がたったら、保存した状態を消す（1日にしたいときは 24 にする）
-const SAVE_TTL_HOURS = 3;
 
 function saveSolo() {
   try {
-    if (S.scen) localStorage.setItem(SAVE_KEY, JSON.stringify({ at: Date.now(), state: S })); // at：最後に保存した時刻
-    else localStorage.removeItem(SAVE_KEY);
+    // ゲーム中なら、ゲームの状態ごと。設定ページなら、シナリオと難易度の選択だけを保存する
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      at: Date.now(), // 最後に保存した時刻
+      state: S.scen ? S : null,
+      settings: { si: S.u.si, di: S.u.di }
+    }));
   } catch (e) {
     // 保存できなくても、遊ぶのには影響しない
   }
@@ -246,8 +249,12 @@ function loadSolo() {
     if (!raw) return;
     const saved = JSON.parse(raw);
     // 古い保存（時刻がない／時間がたちすぎている）は、使わずに消す
-    if (!saved.at || Date.now() - saved.at > SAVE_TTL_HOURS * 3600 * 1000) localStorage.removeItem(SAVE_KEY);
-    else Object.assign(S, saved.state);
+    if (!saved.at || Date.now() - saved.at > KEEP_HOURS * 3600 * 1000) {
+      localStorage.removeItem(SAVE_KEY);
+      return;
+    }
+    if (saved.state) Object.assign(S, saved.state);
+    if (saved.settings) Object.assign(S.u, saved.settings);
   } catch (e) {
     localStorage.removeItem(SAVE_KEY);
   }
@@ -256,7 +263,7 @@ function loadSolo() {
 // 描く前に、付箋の大きさを記録し、描いたあとに状態を保存する
 const draw = () => {
   syncNoteSizes(S.notes);
-  if (S.scen) game();
+  if (S.scen) keepScroll(game);
   else start();
   saveSolo();
 };

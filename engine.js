@@ -190,8 +190,10 @@
       })),
       person: Object.fromEntries(CHARS.map((c) => [c, ROOMS.map((_, r) => {
         const v = visits[c][r];
-        const fresh = known.some(([name, room]) => name === c && room === r) ? v.filter((x) => x !== 1) : v;
-        return v.length ? pick(fresh.length ? fresh : v) : null;
+        const startsHere = known.some(([name, room]) => name === c && room === r);
+        // 初期情報でいる場所に、2回以上いる人物は、個人情報なし（回数だけ共有する）
+        if (startsHere && v.length >= 2) return null;
+        return v.length ? pick(v) : null;
       })]))
     };
 
@@ -217,8 +219,13 @@
       character: cs(c),
       count: n,
       time: t,
+      noPrivate: n > 0 && t === null, // 個人情報がない（初期情報と重なるため）
       shared: `【共有情報】${cs(c)} は 【${ROOMS[r]}】 に合計 ${n} 回滞在した。`,
-      priv: t !== null ? `【個人情報】そのうち 1 回は 【時間 ${t}】 だった。` : "【個人情報】この場所への滞在記録はない。"
+      priv: t !== null
+        ? `【個人情報】そのうち 1 回は 【時間 ${t}】 だった。`
+        : n === 0
+        ? "【個人情報】この場所への滞在記録はない。"
+        : "【個人情報】なし（初期情報の滞在と重なるため、個人情報は得られません）。"
     };
   }
 

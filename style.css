@@ -96,12 +96,12 @@ button {
 
 .game {
   display: grid;
-  grid-template-columns: 240px 1fr 300px;
+  grid-template-columns: var(--lw, 240px) 1fr var(--rw, 300px);
   min-height: 100vh;
 }
 
 .game.noright {
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: var(--lw, 240px) 1fr;
 }
 
 .left, .right {
@@ -294,7 +294,7 @@ select option {
   position: fixed;
   top: 0;
   bottom: 0;
-  right: 300px;
+  right: var(--rw, 300px);
   width: 380px;
   background: var(--panel);
   border-left: 1px solid var(--line);
@@ -604,5 +604,35 @@ button:disabled {
   .nb button {
     padding: 0.4rem 0.8rem;
     font-size: 1rem;
+  }
+}
+
+/* 左右のパネルの幅を変える、つかむ部分（PCのみ） */
+.grip {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: col-resize;
+  z-index: 8;
+  touch-action: none;
+}
+
+.grip-left {
+  left: calc(var(--lw, 240px) - 5px);
+}
+
+.grip-right {
+  right: calc(var(--rw, 300px) - 5px);
+}
+
+.grip:hover, .grip:active {
+  background: var(--gold);
+  opacity: 0.45;
+}
+
+@media (max-width: 1000px) {
+  .grip {
+    display: none;
   }
 }

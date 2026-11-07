@@ -8,6 +8,9 @@ const E = require("./engine.js");
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS = 4;
 const MAX_SPECTATORS = 8;
+// 最初の正解が出てから、結果を出すまでの猶予（ミリ秒）。同時に正解した人と、勝利を分かち合える時間。
+// 伸ばしたいときは、この数字を変える（例：10秒なら 10000）。
+const ANSWER_GRACE_MS = 5000;
 // スタンプ（画面側の online.js の STAMPS と、同じ順番にそろえる）
 const STAMPS = ["🤔 考え中", "👍 なるほど", "😱 まさか", "🙏 お願い", "⏰ 急いで", "🎉 やった！"];
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".webmanifest": "application/manifest+json", ".png": "image/png", ".txt": "text/plain; charset=utf-8" };
@@ -49,8 +52,8 @@ function viewFor(room, me, spec = false) {
     chatOn: room.chatOn,
     chat: room.chat,
     spectators: room.spectators.map((x) => x.name),
-    // 観戦者には、個人情報を送らない
-    log: room.log.map((l) => (!spec && l.by === me.id ? l : stripPrivate(l)))
+    // 観戦者には、調査された分の個人情報まで送る（参加者は、自分の個人情報だけ）
+    log: room.log.map((l) => (spec || l.by === me.id ? l : stripPrivate(l)))
   };
   if (sc) v.scenario = { type: sc.type, diff: sc.diff, clues: sc.clues, known: sc.known, initAll: sc.initAll };
   if (ended) v.reveal = { sol: sc.sol, occ: sc.occ, truth: sc.truth };
@@ -157,13 +160,14 @@ function watchGhost(room, me) {
 
 // 記録がなかった場合や、初期配置と同じ情報の場合は、手番を続けて調査できる
 function isFreeResult(sc, res) {
+  if (res.noPrivate) return true; // 個人情報がないときは、手番が続く
   if (res.count === 0) return true;
   const known = sc.known.map(([c, r]) => c + "_" + r);
   if (res.type === "PLACE_TIME") return res.t === 1 && (sc.initAll || (res.char && known.includes(res.char + "_" + res.roomIdx)));
   return res.time === 1 && known.includes(res.name + "_" + res.roomIdx);
 }
 
-// 最初の正解から5秒たったら、結果を出して終了する
+// 最初の正解から、猶予（ANSWER_GRACE_MS）がたったら、結果を出して終了する
 function finishGame(room) {
   room.endTimer = null;
   if (room.phase === "play") room.phase = "end";
@@ -255,8 +259,8 @@ const actions = {
       me.verdict = "correct";
       room.winners.push(me.id);
       room.winner = room.winners[0];
-      // 同時に正解した人と、勝利を分かち合えるように、5秒だけ待ってから終了する
-      if (!room.endTimer) room.endTimer = setTimeout(() => finishGame(room), 5000);
+      // 同時に正解した人と、勝利を分かち合えるように、猶予（ANSWER_GRACE_MS）だけ待ってから終了する
+      if (!room.endTimer) room.endTimer = setTimeout(() => finishGame(room), ANSWER_GRACE_MS);
     } else {
       me.verdict = "wrong";
       me.alive = false;

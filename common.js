@@ -93,6 +93,70 @@ const bd = (c) => `<span class="bd" style="background:${COL[c]}">${c}</span>`;
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const chip = (act, v, label, on) => `<button class="chip ${on ? "on" : ""}" data-act="${act}" data-v="${v}">${label}</button>`;
 
+// リロードや、他のアプリから戻ったときに、状態を保持する時間（最後の操作から数える）。
+// 1人用も対戦も、この1つの数字で決まる（1日にしたいときは 24 にする）。
+const KEEP_HOURS = 3;
+
+// 左右のパネルの幅（境界をドラッグして変える。端末に保存する）
+const PANEL = { lw: 240, rw: 300 };
+try {
+  Object.assign(PANEL, JSON.parse(localStorage.getItem("kr_panel") || "{}"));
+} catch (e) {
+  // 保存が壊れていたら、標準の幅を使う
+}
+const gameStyle = () => `--lw:${PANEL.lw}px;--rw:${PANEL.rw}px`;
+const grip = (side) => `<div class="grip grip-${side}" data-grip="${side}" title="ドラッグして幅を変える"></div>`;
+
+let GRAB = null;
+const isGrabbing = () => !!GRAB;
+
+document.addEventListener("pointerdown", (e) => {
+  const g = e.target.closest && e.target.closest("[data-grip]");
+  if (!g) return;
+  const side = g.dataset.grip;
+  GRAB = { side, x: e.clientX, w: PANEL[side === "left" ? "lw" : "rw"], game: g.closest(".game") };
+  e.preventDefault();
+});
+
+document.addEventListener("pointermove", (e) => {
+  if (!GRAB) return;
+  const dx = e.clientX - GRAB.x;
+  const max = Math.min(480, Math.round(window.innerWidth * 0.35)); // 中央が狭くなりすぎないようにする
+  const w = Math.max(160, Math.min(max, GRAB.w + (GRAB.side === "left" ? dx : -dx)));
+  const key = GRAB.side === "left" ? "lw" : "rw";
+  PANEL[key] = w;
+  GRAB.game.style.setProperty("--" + key, w + "px");
+});
+
+function endGrab() {
+  if (!GRAB) return;
+  GRAB = null;
+  try {
+    localStorage.setItem("kr_panel", JSON.stringify(PANEL));
+  } catch (e) {
+    // 保存できなくても、使うのには影響しない
+  }
+  if (typeof onPanelEnd === "function") onPanelEnd(); // ドラッグ中に後回しにした画面の更新を行う
+}
+document.addEventListener("pointerup", endGrab);
+document.addEventListener("pointercancel", endGrab);
+
+// 画面を作り直しても、スクロールの位置（ページ全体、左右のパネル）が、先頭に戻らないようにする
+function keepScroll(draw) {
+  if (!document.querySelector || typeof window.scrollTo !== "function") return draw();
+  const top = (cls) => {
+    const el = document.querySelector("." + cls);
+    return el ? el.scrollTop : 0;
+  };
+  const saved = { left: top("left"), right: top("right"), x: window.scrollX || 0, y: window.scrollY || 0 };
+  draw();
+  ["left", "right"].forEach((cls) => {
+    const el = document.querySelector("." + cls);
+    if (el && saved[cls]) el.scrollTop = saved[cls];
+  });
+  window.scrollTo(saved.x, saved.y);
+}
+
 // 付箋の大きさ（高さ）を、いま画面にあるものから読み取って、付箋のデータに記録する（変わったら true）
 function syncNoteSizes(notes) {
   if (!document.querySelectorAll) return false;

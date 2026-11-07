@@ -3,7 +3,38 @@ const API = window.SERVER_URL || "";
 const $ = document.getElementById("app");
 
 let V = null; // サーバーから届いた最新の状態
-let SES = JSON.parse(sessionStorage.getItem("kr") || "null"); // { code, token }
+// いまの部屋の情報 { code, token, at }。最後の操作から KEEP_HOURS がたっていたら、使わない
+function loadSes() {
+  try {
+    const s = JSON.parse(sessionStorage.getItem("kr") || "null");
+    if (!s) return null;
+    s.at = s.at || Date.now(); // 古い形式は、いまの時刻から数える
+    if (Date.now() - s.at > KEEP_HOURS * 3600 * 1000) {
+      sessionStorage.removeItem("kr");
+      return null;
+    }
+    return s;
+  } catch (e) {
+    return null;
+  }
+}
+
+let SES = loadSes();
+let LAST_TOUCH = 0;
+
+// 部屋で動きがあったとき、保持する時間の数え直しを、端末に書き込む（1分に1回まで）
+function touchSession() {
+  const now = Date.now();
+  if (!SES || now - LAST_TOUCH < 60000) return;
+  LAST_TOUCH = now;
+  SES.at = now;
+  try {
+    sessionStorage.setItem("kr", JSON.stringify(SES));
+    localStorage.setItem("kr_last", JSON.stringify(SES));
+  } catch (e) {
+    // 保存できなくても、遊ぶのには影響しない
+  }
+}
 let ES = null;
 let SERVER_READY = false; // サーバーが起きて、つながる状態か
 let WAKE_FAIL = false;
@@ -71,6 +102,7 @@ async function post(path, body) {
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || "エラーが発生しました。");
     U.err = "";
+    touchSession();
     return j;
   } catch (e) {
     U.err = e.message;
@@ -85,9 +117,12 @@ function connect() {
   ES = new EventSource(`${API}/api/events?code=${SES.code}&token=${SES.token}`);
   ES.onmessage = (e) => {
     V = JSON.parse(e.data);
+    touchSession();
     // 付箋やチャットを入力している最中は、画面の作り直しを後回しにする
     const ae = document.activeElement;
-    if (ae && ae.dataset && "chat" in ae.dataset) {
+    if (isGrabbing()) {
+      PENDING = true; // 幅をドラッグしている間は、画面の作り直しを後回しにする
+    } else if (ae && ae.dataset && "chat" in ae.dataset) {
       PENDING = true;
       refreshChat(); // チャット欄だけは、その場で更新する
     } else if (ae && ((ae.dataset && ae.dataset.note) || ae.tagName === "SELECT")) PENDING = true; // 入力や選択の途中は、作り直さない
@@ -274,7 +309,8 @@ function game() {
     : "";
 
   $.innerHTML = `
-    <div class="game ${U.rail ? "" : "noright"} ${mapOpen ? "mapopen" : ""}">
+    <div class="game ${U.rail ? "" : "noright"} ${mapOpen ? "mapopen" : ""}" style="${gameStyle()}">
+      ${grip("left")}${U.rail ? grip("right") : ""}
       <aside class="left">
         <h2 style="font-size:1.1rem">部屋 ${V.code}</h2>
         <b>👥 プレイヤー</b>${players}
@@ -303,7 +339,7 @@ function game() {
           </div>
           ${U.tab === "log"
             ? feed
-            : `<p class="mu">他の人の調査からは「人数」だけがわかります。人物や時間は、調べた本人にだけ見えます。</p>${boardHtml(sc, V.log)}`}
+            : `<p class="mu">${spec ? "観戦者には、調査された分の個人情報まで見えます。" : "他の人の調査からは「人数」だけがわかります。人物や時間は、調べた本人にだけ見えます。"}</p>${boardHtml(sc, V.log)}`}
         </section>
       </main>
       ${rail}
@@ -379,6 +415,8 @@ async function sendChat() {
   const input = document.querySelector("[data-chat]");
   if (input) input.value = "";
   await post("/api/chat", { text });
+  const again = document.querySelector("[data-chat]");
+  if (again) again.focus(); // 続けて入力できるように、入力欄に戻す
 }
 
 // 部屋に再接続している間の画面
@@ -402,7 +440,7 @@ function rejoinCard() {
   } catch (e) {
     last = null;
   }
-  if (!last || SES || Date.now() - last.at > 6 * 3600 * 1000) return "";
+  if (!last || SES || Date.now() - last.at > KEEP_HOURS * 3600 * 1000) return "";
   return `<section class="card result"><b>前回の部屋 ${esc(last.code)} に戻れます</b><button class="go" data-act="rejoin">↩ 前回の部屋に戻る</button></section>`;
 }
 
@@ -411,8 +449,8 @@ function render() {
   PENDING = false;
   if (!V && SES) reconnecting();
   else if (!V) home();
-  else if (V.phase === "lobby") lobby();
-  else game();
+  else if (V.phase === "lobby") keepScroll(lobby);
+  else keepScroll(game);
   const box = document.getElementById("chatbox");
   if (box) box.scrollTop = box.scrollHeight;
 }
@@ -430,7 +468,7 @@ $.addEventListener("click", async (e) => {
     const j = await post("/api/" + (a === "create" ? "create" : "join"), { name: U.name, code: U.code.toUpperCase(), spectate: a === "watch" });
     BUSY = false;
     if (!j) return render();
-    SES = { code: j.code, token: j.token };
+    SES = { code: j.code, token: j.token, at: Date.now() };
     sessionStorage.setItem("kr", JSON.stringify(SES));
     localStorage.setItem("kr_last", JSON.stringify({ ...SES, at: Date.now() }));
     return connect();
@@ -438,7 +476,7 @@ $.addEventListener("click", async (e) => {
   if (a === "rejoin") {
     try {
       const last = JSON.parse(localStorage.getItem("kr_last") || "null");
-      SES = { code: last.code, token: last.token };
+      SES = { code: last.code, token: last.token, at: Date.now() };
       sessionStorage.setItem("kr", JSON.stringify(SES));
       render();
       return connect();
@@ -532,6 +570,17 @@ $.addEventListener("input", (e) => {
   if ("chat" in e.target.dataset) U.chatText = e.target.value;
   if (e.target.id === "cd") U.code = e.target.value;
 });
+
+// 送信・スタンプのボタンを押しても、チャットの入力欄からカーソルが外れないようにする
+// （外れると画面全体が作り直されて、位置が変わってしまうため）
+$.addEventListener("mousedown", (e) => {
+  if (e.target.closest && e.target.closest('[data-act="chatsend"], [data-act="stamp"]')) e.preventDefault();
+});
+
+// 幅のドラッグが終わったら、後回しにした画面の更新を行う（common.js から呼ばれる）
+function onPanelEnd() {
+  if (PENDING) render();
+}
 
 // 付箋の大きさを変えたとき、他のアプリに切り替えるときにも保存する。
 // 他のアプリから戻ったときは、接続し直して、最新の状態にする。
