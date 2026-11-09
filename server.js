@@ -65,7 +65,12 @@ function push(room) {
     const player = room.players.find((p) => p.id === c.pid);
     const sp = !player && room.spectators.find((x) => x.id === c.pid);
     const me = player || sp;
-    if (me) c.res.write(`data: ${JSON.stringify(viewFor(room, me, !!sp))}\n\n`);
+    if (!me) continue;
+    try {
+      c.res.write(`data: ${JSON.stringify(viewFor(room, me, !!sp))}\n\n`);
+    } catch (e) {
+      // 切れた接続への書き込みは、無視する
+    }
   }
 }
 
@@ -316,6 +321,7 @@ function handleEvents(req, res, q) {
   const me = player || sp;
   if (!me) return send(res, 404, { error: "部屋が見つかりません。" });
   res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive", "Access-Control-Allow-Origin": "*" });
+  res.on("error", () => {}); // 通信が切れたときのエラーで、サーバーが止まらないようにする
   const client = { res, pid: me.id };
   room.clients.add(client);
   me.connected = true;
@@ -337,13 +343,25 @@ function handleEvents(req, res, q) {
   });
 }
 
-const server = http.createServer((req, res) => {
-  const url = new URL(req.url, "http://x");
+function handle(req, res) {
+  // 道筋だけを取り出す（「//」のような変なURLで、エラーにならないようにする）
+  let url;
+  try {
+    url = new URL("http://x" + (req.url.startsWith("/") ? req.url : "/"));
+  } catch (e) {
+    res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+    return res.end("Bad request");
+  }
   if (req.method === "OPTIONS") {
     res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type" });
     return res.end();
   }
   // サーバーが起きているかを、画面から確かめるための窓口
+  // Render の「Health Check Path」に設定すると、応答しなくなったサーバーを、見つけやすくなる
+  if (req.method === "GET" && url.pathname === "/healthz") {
+    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+    return res.end("ok");
+  }
   if (req.method === "GET" && url.pathname === "/api/ping") return send(res, 200, { ok: true });
   if (req.method === "GET" && url.pathname === "/api/events") return handleEvents(req, res, url.searchParams);
   if (req.method === "POST" && url.pathname.startsWith("/api/")) {
@@ -367,16 +385,41 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": MIME[path.extname(name)] });
     return fs.createReadStream(file).on("error", () => res.end()).pipe(res);
   }
-  res.writeHead(404); res.end("Not found");
+  res.writeHead(404);
+  res.end("Not found");
+}
+
+const server = http.createServer((req, res) => {
+  try {
+    handle(req, res);
+  } catch (e) {
+    // 想定外のエラーでも、サーバー全体は止めない。原因をログに残す
+    console.error("リクエストの処理でエラー:", req.method, req.url, e);
+    if (!res.headersSent) res.writeHead(500);
+    res.end();
+  }
 });
+
+// Render の中継（ロードバランサー）より長く、接続を保つ（まれな 502 エラーの予防）
+server.keepAliveTimeout = 120000;
+server.headersTimeout = 125000;
 
 // SSEの接続維持と、古い部屋の掃除
 setInterval(() => {
   for (const [code, room] of rooms) {
-    room.clients.forEach((c) => c.res.write(": ping\n\n"));
+    room.clients.forEach((c) => {
+      try {
+        c.res.write(": ping\n\n");
+      } catch (e) {
+        // 切れた接続への書き込みは、無視する
+      }
+    });
     if (Date.now() - room.made > 6 * 3600 * 1000 && room.clients.size === 0) rooms.delete(code);
   }
 }, 25000);
+
+process.on("uncaughtException", (e) => console.error("未処理のエラー（サーバーは動き続けます）:", e));
+process.on("unhandledRejection", (e) => console.error("未処理の非同期エラー（サーバーは動き続けます）:", e));
 
 if (require.main === module) {
   server.listen(PORT, () => {
