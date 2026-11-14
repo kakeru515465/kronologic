@@ -93,6 +93,16 @@ const bd = (c) => `<span class="bd" style="background:${COL[c]}">${c}</span>`;
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const chip = (act, v, label, on) => `<button class="chip ${on ? "on" : ""}" data-act="${act}" data-v="${v}">${label}</button>`;
 
+// パソコン版（exe）のときだけ、Discord の「プレイ中」表示のために、いまの状態を伝える。
+// ブラウザでは、何もしない。答えなどの秘密の情報は、送らない。
+function reportPresence(info) {
+  try {
+    if (window.desktop && window.desktop.presence) window.desktop.presence(info);
+  } catch (e) {
+    // 表示に失敗しても、ゲームには影響しない
+  }
+}
+
 // リロードや、他のアプリから戻ったときに、状態を保持する時間（最後の操作から数える）。
 // 1人用も対戦も、この1つの数字で決まる（1日にしたいときは 24 にする）。
 const KEEP_HOURS = 3;

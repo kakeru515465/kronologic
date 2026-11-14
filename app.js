@@ -266,6 +266,9 @@ const draw = () => {
   if (S.scen) keepScroll(game);
   else start();
   saveSolo();
+  reportPresence(S.scen
+    ? { mode: "solo", phase: S.done ? "done" : "play", scenario: S.scen.type, calls: S.hist.length }
+    : { mode: "solo", phase: "home" });
 };
 
 // 付箋の大きさを変えたとき、他のアプリに切り替えるときにも、保存する

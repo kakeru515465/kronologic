@@ -453,6 +453,9 @@ function render() {
   else keepScroll(game);
   const box = document.getElementById("chatbox");
   if (box) box.scrollTop = box.scrollHeight;
+  reportPresence(V
+    ? { mode: "online", phase: V.phase, players: V.players.length, calls: V.log.length, role: V.role, code: V.code }
+    : { mode: "online", phase: "home" });
 }
 
 $.addEventListener("click", async (e) => {
